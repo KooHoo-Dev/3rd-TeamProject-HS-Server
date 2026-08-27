@@ -154,9 +154,9 @@ public class Room
             // (타입이랑 매개변수로 텍스트만 넘기면 알아서 잘 처리해줍니다)
             TypeOnly kind = JsonSerializer.Deserialize<TypeOnly>(text);
             
-            if(kind?.Type == "move") HandleMove(member, text);
-            else if(kind?.Type == "chat") await HandleChatAsync(member, text);
-            else if(kind?.Type == "input") HandleInputAsync(member, text);
+            // if(kind?.Type == "move") HandleMove(member, text);
+            // if(kind?.Type == "chat") await HandleChatAsync(member, text);
+            if(kind?.Type == "input") HandleInputAsync(member, text);
             else if(kind?.Type == "snapshot") await HandleSnapshotAsync(member, text);
             
             // 모르는 정보는 그냥 흘려버립니다.
@@ -166,35 +166,35 @@ public class Room
         }
     }
 
-    // 이동 관련 메시지를 처리하는 함수
-    private void HandleMove(Member member, string text)
-    {
-        // 메시지를 읽어준다
-        MoveMessage move = JsonSerializer.Deserialize<MoveMessage>(text);
-        // move 메시지의 내용을 member의 X,Y 내용에 카피해준다
-        member.X = move.X;
-        member.Y = move.Y;
-        member.MovesSinceLog++;
-        
-        LogMove(member, move);
-    }
+    // // 이동 관련 메시지를 처리하는 함수
+    // private void HandleMove(Member member, string text)
+    // {
+    //     // 메시지를 읽어준다
+    //     MoveMessage move = JsonSerializer.Deserialize<MoveMessage>(text);
+    //     // move 메시지의 내용을 member의 X,Y 내용에 카피해준다
+    //     member.X = move.X;
+    //     member.Y = move.Y;
+    //     member.MovesSinceLog++;
+    //     
+    //     LogMove(member, move);
+    // }
 
     // 채팅 관련 메시지를 처리하는 함수
-    private async Task HandleChatAsync(Member member, string text)
-    {
-        // 먼저 Chat메시지를 읽어 준다
-        ChatMessage chat = JsonSerializer.Deserialize<ChatMessage>(text);
-        // 온 메시지에서 사용자가 말한 부분만 읽어준다.
-        // .Trim() 함수를 이용해서 앞,뒤 공백을 제거해준다
-        string said = chat.Text?.Trim();
-        Console.WriteLine($"{HandleLog}[{code}] {chat.NickName} : {said}");
-        // 예시 출력 : [5623] Jay : 안뇽
-        
-        // 여기까지 처리됐으면
-        // (서버) -> (다른 클라이언트) 들에게 보낸다
-        // 받은 객체를 그대로 보낸다.
-        await BroadcastAsync(chat);
-    }
+    // private async Task HandleChatAsync(Member member, string text)
+    // {
+    //     // 먼저 Chat메시지를 읽어 준다
+    //     ChatMessage chat = JsonSerializer.Deserialize<ChatMessage>(text);
+    //     // 온 메시지에서 사용자가 말한 부분만 읽어준다.
+    //     // .Trim() 함수를 이용해서 앞,뒤 공백을 제거해준다
+    //     string said = chat.Text?.Trim();
+    //     Console.WriteLine($"{HandleLog}[{code}] {chat.NickName} : {said}");
+    //     // 예시 출력 : [5623] Jay : 안뇽
+    //     
+    //     // 여기까지 처리됐으면
+    //     // (서버) -> (다른 클라이언트) 들에게 보낸다
+    //     // 받은 객체를 그대로 보낸다.
+    //     await BroadcastAsync(chat);
+    // }
 
     // Guest가 보낸 입력을 Room 자체적으로 저장한다
     private void HandleInputAsync(Member member, string text)
@@ -503,25 +503,25 @@ public class Room
     // 받을 때마다 찍지 않고 간격을 두는 이유?
     // : 오는 것을 다 찍으면 콘솔이 위치로만 채워져 정작 중요한 들어옴,나감이 안 보인다.
     //  대신 그동안 몇 번 받았는지 출력해줌.
-    private void LogMove(Member member, MoveMessage move)
-    {
-        if (logMovesPerSecond <= 0) return;
-
-        TimeSpan gap = DateTime.Now - member.LastLogAt;
-        if (gap.TotalSeconds < 1.0 / logMovesPerSecond) return;
-
-        // 보낸 쪽이 적은 번호가 서버가 아는 번호와 다르면 그대로 드러내 준다.
-        // 평소에는 같으므로 아무것도 붙지 않는다.
-        string claimed = move.Id == member.User.Id ? "" : $"  (보낸 쪽이 적은 번호 : {move.Id})";
-
-        Console.WriteLine(
-            $"{HandleLog}[{code}] 받음 {member.User.NickName}({member.User.Id}) " +
-            $"({member.X,7:F2}, {member.Y,7:F2})  " +
-            $"지난 {gap.TotalSeconds:F1}초에 {member.MovesSinceLog}번{claimed}");
-
-        member.MovesSinceLog = 0;
-        member.LastLogAt = DateTime.Now;
-    }
+    // private void LogMove(Member member, MoveMessage move)
+    // {
+    //     if (logMovesPerSecond <= 0) return;
+    //
+    //     TimeSpan gap = DateTime.Now - member.LastLogAt;
+    //     if (gap.TotalSeconds < 1.0 / logMovesPerSecond) return;
+    //
+    //     // 보낸 쪽이 적은 번호가 서버가 아는 번호와 다르면 그대로 드러내 준다.
+    //     // 평소에는 같으므로 아무것도 붙지 않는다.
+    //     string claimed = move.Id == member.User.Id ? "" : $"  (보낸 쪽이 적은 번호 : {move.Id})";
+    //
+    //     Console.WriteLine(
+    //         $"{HandleLog}[{code}] 받음 {member.User.NickName}({member.User.Id}) " +
+    //         $"({member.X,7:F2}, {member.Y,7:F2})  " +
+    //         $"지난 {gap.TotalSeconds:F1}초에 {member.MovesSinceLog}번{claimed}");
+    //
+    //     member.MovesSinceLog = 0;
+    //     member.LastLogAt = DateTime.Now;
+    // }
 
     // Guest Input은 자주 들어오므로 사람마다 일정 간격으로 요약해서 출력한다.
     private void LogGuestInput(Member member, GuestInputMessage input)

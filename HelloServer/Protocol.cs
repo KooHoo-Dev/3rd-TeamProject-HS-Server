@@ -32,14 +32,15 @@ public class HelloMessage
     public string NickName { get; set; }
 }
 
-public class MoveMessage
-{
-    public string Type { get; set; } = "move";
-    public string Id { get; set; }
-    public float X { get; set; }
-    public float Y { get; set; }
-}
-
+// 이제 사용안함 GuestInputMessage, SnapshotMessage로 대체
+// public class MoveMessage
+// {
+//     public string Type { get; set; } = "move";
+//     public string Id { get; set; }
+//     public float X { get; set; }
+//     public float Y { get; set; }
+// }
+//
 public class GuestInputMessage
 {
     public string Type { get; set; } = "input";
@@ -109,13 +110,13 @@ public class LeaveMessage
     public string Id { get; set; }
 }
 
-public class ChatMessage
-{
-    public string Type { get; set; } = "chat";
-    public string Id { get; set; }
-    public string NickName { get; set; }
-    public string Text { get; set; }
-}
+// public class ChatMessage
+// {
+//     public string Type { get; set; } = "chat";
+//     public string Id { get; set; }
+//     public string NickName { get; set; }
+//     public string Text { get; set; }
+// }
 
 // 강사님 코드 비활성화
 // public class StateMessage

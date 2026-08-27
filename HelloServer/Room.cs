@@ -38,6 +38,9 @@ public class Room
         //  DateTime.UtcNow : 협정 세계시(영국 본초 자오선(?))
         // 출력 서식을 따로 지정할 수 있습니다. 그거는 MS 홈페이지 가서 보세요
         public DateTime LastLogAt;
+
+        public bool isSendedBefore;
+        public GuestInputMessage LastInput;
         
         // 보낼때 여러메시지를 동시에 보내지 않기 위에
         // 사람(멤버)마다 Gate를 하나씩 두고 한번에 하나씩 보내기 위해
@@ -140,7 +143,7 @@ public class Room
             
             if(kind?.Type == "move") HandleMove(member, text);
             else if(kind?.Type == "chat") await HandleChatAsync(member, text);
-            else if(kind?.Type == "input") await HandleInputAsync(member, text);
+            else if(kind?.Type == "input") HandleInputAsync(member, text);
             else if(kind?.Type == "snapshot") await HandleSnapshotAsync(member, text);
             
             // 모르는 정보는 그냥 흘려버립니다.
@@ -180,8 +183,8 @@ public class Room
         await BroadcastAsync(chat);
     }
 
-    // Guest가 보낸 입력을 현재 Host에게 바로 전달한다.
-    private async Task HandleInputAsync(Member member, string text)
+    // Guest가 보낸 입력을 Room 자체적으로 저장한다
+    private void HandleInputAsync(Member member, string text)
     {
         // Host의 입력은 자기 자신에게 다시 보내지 않는다.
         if (member.IsHost) return;
@@ -190,13 +193,14 @@ public class Room
         // Host가 없으면 이번 입력은 무시한다.
         if (host == null) return;
 
-        InputMessage input = JsonSerializer.Deserialize<InputMessage>(text);
+        GuestInputMessage input = JsonSerializer.Deserialize<GuestInputMessage>(text);
         Console.WriteLine($"[{code}] {input.Id} : X - {input.X}, Y -  {input.Y}, IsLeftShiftHold  - {input.IsLeftShiftHold},  IsRightShiftHold - {input.IsRightShiftHold}");
         
         // 클라이언트가 보낸 ID는 믿지 않고 현재 Member의 ID를 사용한다.
         input.Id = member.User.Id;
-
-        await SendAsync(host, input);
+        
+        // 게스트 입력값 저장
+        member.LastInput = input;
     }
 
     // Host가 보낸 Snapshot을 같은 방의 Guest들에게 바로 전달한다.
@@ -291,6 +295,26 @@ public class Room
 
         // states를 배열로 바꿔서 뿌린다(Broadcast)
         await BroadcastAsync(new StateMessage() { Players = players.ToArray() });
+    }
+    
+    public async Task SendGuestInputsToHostAsync()
+    {
+        // members.Value의 각 Member에 있는 InputMessage를 Task.WhenAll로 동시에 
+        // 이것보다 한번에 묶어서 보내는게 좋을듯
+        GuestInputGroupMessage inputGroup = new GuestInputGroupMessage();
+        Member host = GetHost();
+        foreach (Member member in members.Values)
+        {
+            inputGroup.Inputs.Add(member.LastInput);
+        }
+        
+        Console.WriteLine($"[{code}] GuestInputsToHost : {inputGroup.Inputs.Count}");
+        for (int i = 0; i < inputGroup.Inputs.Count; i++)
+        {
+            Console.WriteLine($"[{code}] GuestInputsToHost : {inputGroup.Inputs[i].Id} : X - {inputGroup.Inputs[i].X}, Y -  {inputGroup.Inputs[i].Y}, IsLeftShiftHold  - {inputGroup.Inputs[i].IsLeftShiftHold},  IsRightShiftHold - {inputGroup.Inputs[i].IsRightShiftHold}");
+        }
+        
+        await SendAsync(host, inputGroup);
     }
     
     #endregion
@@ -458,4 +482,5 @@ public class Room
         member.MovesSinceLog = 0;
         member.LastLogAt = DateTime.Now;
     }
+
 }

@@ -125,7 +125,29 @@ public class RoomHub
             // 타이머가 종료되면 자동으로 false를 반환합니다.
             while (await timer.WaitForNextTickAsync(token))
             {
-                await BroadcastPlayerStates();
+                // 락을걸기전에 snapshot(복사본)이 들어갈
+                // list를 생성해놓는다
+                List<Room> snapshot = new List<Room>();
+
+                // 위에 설정된 object 객체인 gate를 이용하여 lock을 걸어놓는다.
+                lock (gate)
+                {
+                    if(rooms.Count ==0) continue;
+
+                    foreach (Entry entry in rooms.Values)
+                    {
+                        snapshot.Add(entry.Room);
+                    }
+                }
+
+                List<Task> sending = new List<Task>();
+                foreach (Room room in snapshot)
+                {
+                    // 상태정보 보내는 Task를 가져와서 sending에 추가해준다.
+                    sending.Add(room.BroadcastStateAsync());
+                }
+                
+                await Task.WhenAll(sending);
             }
 
         }
@@ -138,32 +160,51 @@ public class RoomHub
             Console.WriteLine($"[RoomHub] Exception: {e.Message}");
         }
     }
-
-    private async Task BroadcastPlayerStates()
+    
+    public async Task SendGuestInputsToHostLoopAsync(CancellationToken token)
     {
-        // 락을걸기전에 snapshot(복사본)이 들어갈
-        // list를 생성해놓는다
-        List<Room> snapshot = new List<Room>();
-
-        // 위에 설정된 object 객체인 gate를 이용하여 lock을 걸어놓는다.
-        lock (gate)
+        PeriodicTimer timer = new PeriodicTimer(
+            TimeSpan.FromSeconds(1.0 / broadcastPerSecond));
+        
+        try
         {
-            if(rooms.Count ==0) return;
-
-            foreach (Entry entry in rooms.Values)
+            // 타이머가 종료되면 자동으로 false를 반환합니다.
+            while (await timer.WaitForNextTickAsync(token))
             {
-                snapshot.Add(entry.Room);
-            }
-        }
+                // 락을걸기전에 snapshot(복사본)이 들어갈
+                // list를 생성해놓는다
+                List<Room> snapshot = new List<Room>();
 
-        List<Task> sending = new List<Task>();
-        foreach (Room room in snapshot)
-        {
-            // 상태정보 보내는 Task를 가져와서 sending에 추가해준다.
-            sending.Add(room.BroadcastStateAsync());
-        }
+                // 위에 설정된 object 객체인 gate를 이용하여 lock을 걸어놓는다.
+                lock (gate)
+                {
+                    if(rooms.Count ==0) continue;
+
+                    foreach (Entry entry in rooms.Values)
+                    {
+                        snapshot.Add(entry.Room);
+                    }
+                }
+
+                List<Task> sending = new List<Task>();
+                foreach (Room room in snapshot)
+                {
+                    // 상태정보 보내는 Task를 가져와서 sending에 추가해준다.
+                    sending.Add(room.SendGuestInputsToHostAsync());
+                }
                 
-        await Task.WhenAll(sending);
+                await Task.WhenAll(sending);
+            }
+
+        }
+        catch (OperationCanceledException)
+        {
+            // 서버가 꺼지는 중.
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine($"[RoomHub] Exception: {e.Message}");
+        }
     }
 
     // 방 코드를 정규화 하는 유틸 함수입니다.
@@ -192,4 +233,5 @@ public class RoomHub
 
         return code;
     }
+
 }

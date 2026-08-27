@@ -39,16 +39,23 @@ public class MoveMessage
     public float Y { get; set; }
 }
 
-// Guest가 보낸 입력을 Host에게 전달할 때 사용하는 메시지.
-public class InputMessage
+public class GuestInputMessage
 {
     public string Type { get; set; } = "input";
     public string Id { get; set; }
 
     public float X { get; set; }
     public float Y { get; set; }
-    public float IsLeftShiftHold { get; set; }
-    public float IsRightShiftHold { get; set; }
+
+    public bool IsLeftShiftHold { get; set; }
+    public bool IsRightShiftHold { get; set; }
+}
+
+public class GuestInputGroupMessage
+{
+    public string Type { get; set; } = "inputGroup";
+
+    public List<GuestInputMessage> Inputs { get; set; } = new();
 }
 
 // Host가 만든 Physics 상태를 Guest에게 전달할 때 사용하는 메시지.

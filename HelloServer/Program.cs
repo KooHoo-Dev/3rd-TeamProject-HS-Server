@@ -86,6 +86,7 @@ public class Program
         // 어플리케이션이 종료될때까지 허브가 Broadcast 루프를 돌도록 설정해준다.
         // _ : 반환형이 있지만 안쓸때 언더바 사용함
         _ = hub.BroadcastLoopAsync(app.Lifetime.ApplicationStopped);
+        _ = hub.SendGuestInputsToHostLoopAsync(app.Lifetime.ApplicationStopped);
         
         // 어느 주소로 찾아오면 되는지 한번 출력함
         // (강의장에서 서버 실행했을때 주소 확인용)

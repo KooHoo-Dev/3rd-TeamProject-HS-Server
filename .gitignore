@@ -55,3 +55,6 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+HelloServer/.idea/.idea.3rd-TeamProject-HS-Server.dir/.idea/indexLayout.xml
+HelloServer/.idea/.idea.3rd-TeamProject-HS-Server.dir/.idea/projectSettingsUpdater.xml
+HelloServer/.idea/.idea.3rd-TeamProject-HS-Server.dir/.idea/workspace.xml

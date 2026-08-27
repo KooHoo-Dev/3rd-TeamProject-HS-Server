@@ -41,6 +41,10 @@ public class Room
 
         public bool isSendedBefore;
         public GuestInputMessage LastInput;
+        public int InputsSinceLog;
+        public DateTime LastInputLogAt;
+        public int RejectedSnapshotsSinceLog;
+        public DateTime LastRejectedSnapshotLogAt;
         
         // 보낼때 여러메시지를 동시에 보내지 않기 위에
         // 사람(멤버)마다 Gate를 하나씩 두고 한번에 하나씩 보내기 위해
@@ -63,6 +67,11 @@ public class Room
     private readonly SemaphoreSlim gate = new SemaphoreSlim(1, 1);
     private readonly string code; // 방번호
     private readonly int logMovesPerSecond; // 룸허브를 통해서 전달 받습니다. 
+
+    private int inputGroupsSinceLog;
+    private DateTime lastInputGroupLogAt;
+    private int snapshotsSinceLog;
+    private DateTime lastSnapshotLogAt;
 
     public bool IsEmpty => members.IsEmpty;
     
@@ -194,24 +203,28 @@ public class Room
         if (host == null) return;
 
         GuestInputMessage input = JsonSerializer.Deserialize<GuestInputMessage>(text);
-        Console.WriteLine($"[{code}] {input.Id} : X - {input.X}, Y -  {input.Y}, IsLeftShiftHold  - {input.IsLeftShiftHold},  IsRightShiftHold - {input.IsRightShiftHold}");
-        
         // 클라이언트가 보낸 ID는 믿지 않고 현재 Member의 ID를 사용한다.
         input.Id = member.User.Id;
         
         // 게스트 입력값 저장
         member.LastInput = input;
+        LogGuestInput(member, input);
     }
 
     // Host가 보낸 Snapshot을 같은 방의 Guest들에게 바로 전달한다.
     private async Task HandleSnapshotAsync(Member member, string text)
     {
         // Guest는 authoritative Snapshot을 전달할 수 없다.
-        if (member.IsHost == false) return;
+        if (member.IsHost == false)
+        {
+            LogRejectedSnapshot(member);
+            return;
+        }
 
         SnapshotMessage snapshot = JsonSerializer.Deserialize<SnapshotMessage>(text);
         // 송신 Host를 제외한 나머지 Member에게만 전달한다.
         await BroadcastAsync(snapshot, member.User.Id);
+        LogSnapshot(member, snapshot);
     }
 
     #endregion
@@ -299,27 +312,29 @@ public class Room
     
     public async Task SendGuestInputsToHostAsync()
     {
-        // members.Value의 각 Member에 있는 InputMessage를 Task.WhenAll로 동시에 
-        // 이것보다 한번에 묶어서 보내는게 좋을듯
-        GuestInputGroupMessage inputGroup = new GuestInputGroupMessage();
         Member host = GetHost();
+        // 아직 hello 처리가 끝나지 않은 Room은 Host가 없을 수 있다.
+        if (host == null) return;
+
+        GuestInputGroupMessage inputGroup = new GuestInputGroupMessage();
         foreach (Member member in members.Values)
         {
+            // Host와 아직 Input이 없는 Guest는 Group에 넣지 않는다.
+            // 일단 보류 그냥 호스트 쪽에서 LastInput null이면 입력 안한 걸로 처리
+            // if (member.IsHost || member.LastInput == null) continue;
             inputGroup.Inputs.Add(member.LastInput);
         }
-        
-        Console.WriteLine($"[{code}] GuestInputsToHost : {inputGroup.Inputs.Count}");
-        for (int i = 0; i < inputGroup.Inputs.Count; i++)
-        {
-            Console.WriteLine($"[{code}] GuestInputsToHost : {inputGroup.Inputs[i].Id} : X - {inputGroup.Inputs[i].X}, Y -  {inputGroup.Inputs[i].Y}, IsLeftShiftHold  - {inputGroup.Inputs[i].IsLeftShiftHold},  IsRightShiftHold - {inputGroup.Inputs[i].IsRightShiftHold}");
-        }
+
+        // 새로 받은 Guest Input이 없으면 빈 Group은 보내지 않는다.
+        if (inputGroup.Inputs.Count == 0) return;
         
         await SendAsync(host, inputGroup);
+        LogGuestInputGroup(host, inputGroup);
         
         // 전송이 끝나면 null로 초기화
         foreach (Member member in members.Values)
         {
-            member.LastInput = null;
+            if (member.IsHost == false) member.LastInput = null;
         }
     }
     
@@ -487,6 +502,91 @@ public class Room
 
         member.MovesSinceLog = 0;
         member.LastLogAt = DateTime.Now;
+    }
+
+    // Guest Input은 자주 들어오므로 사람마다 일정 간격으로 요약해서 출력한다.
+    private void LogGuestInput(Member member, GuestInputMessage input)
+    {
+        if (logMovesPerSecond <= 0) return;
+
+        member.InputsSinceLog++;
+        DateTime now = DateTime.Now;
+        TimeSpan gap = now - member.LastInputLogAt;
+        double seconds = member.LastInputLogAt == default ? 0 : gap.TotalSeconds;
+        if (member.LastInputLogAt != default &&
+            gap.TotalSeconds < 1.0 / logMovesPerSecond) return;
+
+        Console.WriteLine(
+            $"[{code}] Guest {member.User.NickName}({member.User.Id}) Input " +
+            $"({input.X,7:F2}, {input.Y,7:F2}) " +
+            $"LShift:{input.IsLeftShiftHold} RShift:{input.IsRightShiftHold}  " +
+            $"최근 {seconds:F1}초에 {member.InputsSinceLog}번 수신");
+
+        member.InputsSinceLog = 0;
+        member.LastInputLogAt = now;
+    }
+
+    // Host에게 실제로 보낸 Input Group만 Room 단위로 요약해서 출력한다.
+    private void LogGuestInputGroup(Member host, GuestInputGroupMessage inputGroup)
+    {
+        if (logMovesPerSecond <= 0) return;
+
+        inputGroupsSinceLog++;
+        DateTime now = DateTime.Now;
+        TimeSpan gap = now - lastInputGroupLogAt;
+        double seconds = lastInputGroupLogAt == default ? 0 : gap.TotalSeconds;
+        if (lastInputGroupLogAt != default &&
+            gap.TotalSeconds < 1.0 / logMovesPerSecond) return;
+
+        Console.WriteLine(
+            $"[{code}] Host {host.User.NickName}({host.User.Id})에게 " +
+            $"Guest Input Group 전달: Guest {inputGroup.Inputs.Count}명, " +
+            $"최근 {seconds:F1}초에 {inputGroupsSinceLog}회 전송");
+
+        inputGroupsSinceLog = 0;
+        lastInputGroupLogAt = now;
+    }
+
+    // Host Snapshot도 Physics 데이터 전체 대신 전달 결과만 요약해서 출력한다.
+    private void LogSnapshot(Member host, SnapshotMessage snapshot)
+    {
+        if (logMovesPerSecond <= 0) return;
+
+        snapshotsSinceLog++;
+        DateTime now = DateTime.Now;
+        TimeSpan gap = now - lastSnapshotLogAt;
+        double seconds = lastSnapshotLogAt == default ? 0 : gap.TotalSeconds;
+        if (lastSnapshotLogAt != default &&
+            gap.TotalSeconds < 1.0 / logMovesPerSecond) return;
+
+        int guestCount = Math.Max(0, members.Count - 1);
+        Console.WriteLine(
+            $"[{code}] Host {host.User.NickName}({host.User.Id}) Snapshot Broadcast: " +
+            $"Guest {guestCount}명, " +
+            $"최근 {seconds:F1}초에 {snapshotsSinceLog}회 전달");
+
+        snapshotsSinceLog = 0;
+        lastSnapshotLogAt = now;
+    }
+
+    // Guest의 Snapshot 시도는 Broadcast하지 않고 일정 간격으로만 기록한다.
+    private void LogRejectedSnapshot(Member member)
+    {
+        if (logMovesPerSecond <= 0) return;
+
+        member.RejectedSnapshotsSinceLog++;
+        DateTime now = DateTime.Now;
+        TimeSpan gap = now - member.LastRejectedSnapshotLogAt;
+        double seconds = member.LastRejectedSnapshotLogAt == default ? 0 : gap.TotalSeconds;
+        if (member.LastRejectedSnapshotLogAt != default &&
+            gap.TotalSeconds < 1.0 / logMovesPerSecond) return;
+
+        Console.WriteLine(
+            $"[{code}] Guest {member.User.NickName}({member.User.Id})의 Snapshot " +
+            $"최근 {seconds:F1}초에 {member.RejectedSnapshotsSinceLog}회 차단");
+
+        member.RejectedSnapshotsSinceLog = 0;
+        member.LastRejectedSnapshotLogAt = now;
     }
 
 }

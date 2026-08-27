@@ -125,29 +125,7 @@ public class RoomHub
             // 타이머가 종료되면 자동으로 false를 반환합니다.
             while (await timer.WaitForNextTickAsync(token))
             {
-                // 락을걸기전에 snapshot(복사본)이 들어갈
-                // list를 생성해놓는다
-                List<Room> snapshot = new List<Room>();
-
-                // 위에 설정된 object 객체인 gate를 이용하여 lock을 걸어놓는다.
-                lock (gate)
-                {
-                    if(rooms.Count ==0) continue;
-
-                    foreach (Entry entry in rooms.Values)
-                    {
-                        snapshot.Add(entry.Room);
-                    }
-                }
-
-                List<Task> sending = new List<Task>();
-                foreach (Room room in snapshot)
-                {
-                    // 상태정보 보내는 Task를 가져와서 sending에 추가해준다.
-                    sending.Add(room.BroadcastStateAsync());
-                }
-                
-                await Task.WhenAll(sending);
+                await BroadcastPlayerStates();
             }
 
         }
@@ -159,6 +137,33 @@ public class RoomHub
         {
             Console.WriteLine($"[RoomHub] Exception: {e.Message}");
         }
+    }
+
+    private async Task BroadcastPlayerStates()
+    {
+        // 락을걸기전에 snapshot(복사본)이 들어갈
+        // list를 생성해놓는다
+        List<Room> snapshot = new List<Room>();
+
+        // 위에 설정된 object 객체인 gate를 이용하여 lock을 걸어놓는다.
+        lock (gate)
+        {
+            if(rooms.Count ==0) return;
+
+            foreach (Entry entry in rooms.Values)
+            {
+                snapshot.Add(entry.Room);
+            }
+        }
+
+        List<Task> sending = new List<Task>();
+        foreach (Room room in snapshot)
+        {
+            // 상태정보 보내는 Task를 가져와서 sending에 추가해준다.
+            sending.Add(room.BroadcastStateAsync());
+        }
+                
+        await Task.WhenAll(sending);
     }
 
     // 방 코드를 정규화 하는 유틸 함수입니다.

@@ -23,6 +23,7 @@ public class Room
     {
         public User User;
         public WebSocket Socket;
+        public bool IsHost;
 
         // 원래는 벡터로 Position으로 묶어서 사용하는게 좋습니다.
         // 님들이 개발할때는 그렇게 하세여
@@ -66,6 +67,17 @@ public class Room
     {
         this.code = code;
         this.logMovesPerSecond = logMovesPerSecond;
+    }
+
+    // 현재 방의 Host를 찾는다.
+    private Member GetHost()
+    {
+        foreach (Member member in members.Values)
+        {
+            if (member.IsHost) return member;
+        }
+
+        return null;
     }
 
     #region 듣기
@@ -128,6 +140,8 @@ public class Room
             
             if(kind?.Type == "move") HandleMove(member, text);
             else if(kind?.Type == "chat") await HandleChatAsync(member, text);
+            else if(kind?.Type == "input") await HandleInputAsync(member, text);
+            else if(kind?.Type == "snapshot") await HandleSnapshotAsync(member, text);
             
             // 모르는 정보는 그냥 흘려버립니다.
             // Tip
@@ -164,6 +178,36 @@ public class Room
         // (서버) -> (다른 클라이언트) 들에게 보낸다
         // 받은 객체를 그대로 보낸다.
         await BroadcastAsync(chat);
+    }
+
+    // Guest가 보낸 입력을 현재 Host에게 바로 전달한다.
+    private async Task HandleInputAsync(Member member, string text)
+    {
+        // Host의 입력은 자기 자신에게 다시 보내지 않는다.
+        if (member.IsHost) return;
+
+        Member host = GetHost();
+        // Host가 없으면 이번 입력은 무시한다.
+        if (host == null) return;
+
+        InputMessage input = JsonSerializer.Deserialize<InputMessage>(text);
+        Console.WriteLine($"[{code}] {input.Id} : X - {input.X}, Y -  {input.Y}, IsLeftShiftHold  - {input.IsLeftShiftHold},  IsRightShiftHold - {input.IsRightShiftHold}");
+        
+        // 클라이언트가 보낸 ID는 믿지 않고 현재 Member의 ID를 사용한다.
+        input.Id = member.User.Id;
+
+        await SendAsync(host, input);
+    }
+
+    // Host가 보낸 Snapshot을 같은 방의 Guest들에게 바로 전달한다.
+    private async Task HandleSnapshotAsync(Member member, string text)
+    {
+        // Guest는 authoritative Snapshot을 전달할 수 없다.
+        if (member.IsHost == false) return;
+
+        SnapshotMessage snapshot = JsonSerializer.Deserialize<SnapshotMessage>(text);
+        // 송신 Host를 제외한 나머지 Member에게만 전달한다.
+        await BroadcastAsync(snapshot, member.User.Id);
     }
 
     #endregion
@@ -233,11 +277,11 @@ public class Room
         if (members.IsEmpty) return;
         
         // 사람마다 위치 데이터 객체 하나씩 만든다.
-        List<PlayerState> states = new List<PlayerState>();
+        List<PlayerState> players = new List<PlayerState>();
 
         foreach (Member member in members.Values)
         {
-            states.Add(new PlayerState()
+            players.Add(new PlayerState()
             {
                 Id = member.User.Id,
                 X = member.X,
@@ -246,7 +290,7 @@ public class Room
         }
 
         // states를 배열로 바꿔서 뿌린다(Broadcast)
-        await BroadcastAsync(new StateMessage() { States = states.ToArray() });
+        await BroadcastAsync(new StateMessage() { Players = players.ToArray() });
     }
     
     #endregion
@@ -289,6 +333,9 @@ public class Room
 
         try
         {
+            // 방에 처음 들어오는 Member가 Host가 된다.
+            member.IsHost = members.IsEmpty;
+
             // 누군가가 hello 메시지를 보냈으면
             // welcome 메시지를 이용해서
             // 현재 방 사람들을 접속한 유저에게 전송하고,
@@ -329,7 +376,19 @@ public class Room
 
         try
         {
+            bool wasHost = member.IsHost;
             members.TryRemove(member.User.Id, out _);
+
+            // Host가 나갔고 방에 사람이 남아 있으면 한 명을 다음 Host로 지정한다.
+            if (wasHost)
+            {
+                foreach (Member other in members.Values)
+                {
+                    other.IsHost = true;
+                    break;
+                }
+            }
+
             // 퇴장한것을 알려줍니다.
             await BroadcastAsync(new LeaveMessage { Id = member.User.Id }, member.User.Id);
         }

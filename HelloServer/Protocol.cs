@@ -15,6 +15,7 @@ public class TypeOnly
 }
 
 // 위치 상태를 나타내는 데이터 객체 한줄
+// 강사님 코드는 비활성화
 public class PlayerState
 {
     public string Id { get; set; }
@@ -36,6 +37,43 @@ public class MoveMessage
     public string Id { get; set; }
     public float X { get; set; }
     public float Y { get; set; }
+}
+
+// Guest가 보낸 입력을 Host에게 전달할 때 사용하는 메시지.
+public class InputMessage
+{
+    public string Type { get; set; } = "input";
+    public string Id { get; set; }
+
+    public float X { get; set; }
+    public float Y { get; set; }
+    public float IsLeftShiftHold { get; set; }
+    public float IsRightShiftHold { get; set; }
+}
+
+// Host가 만든 Physics 상태를 Guest에게 전달할 때 사용하는 메시지.
+public class SnapshotMessage
+{
+    public string Type { get; set; } = "snapshot";
+
+    // 아직 정해지지 않은 Physics 데이터는 그대로 전달한다.
+    [System.Text.Json.Serialization.JsonExtensionData]
+    public Dictionary<string, System.Text.Json.JsonElement> Fields { get; set; }
+}
+
+public class StateMessage
+{
+    public string Type { get; set; } = "state";
+    public string Id { get; set; }
+    public string TestMessage { get; set; }
+    // 호스트의 유의미한 모든 정보
+    // 플레이어 (위치, 무력화 상태)
+    public PlayerState[] Players { get; set; }
+    // 물고기 (위치, 상태)
+    // 공용 인벤토리 내 자원량
+    // 다리 
+    // 시간 
+    // 게임 오버 척도, 게임 승리 척도
 }
 
 #endregion
@@ -72,10 +110,11 @@ public class ChatMessage
     public string Text { get; set; }
 }
 
-public class StateMessage
-{
-    public string Type { get; set; } = "state";
-    public PlayerState[] States { get; set; }
-}
+// 강사님 코드 비활성화
+// public class StateMessage
+// {
+//     public string Type { get; set; } = "state";
+//     public PlayerState[] States { get; set; }
+// }
 
 #endregion

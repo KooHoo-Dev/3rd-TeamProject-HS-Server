@@ -315,6 +315,12 @@ public class Room
         }
         
         await SendAsync(host, inputGroup);
+        
+        // 전송이 끝나면 null로 초기화
+        foreach (Member member in members.Values)
+        {
+            member.LastInput = null;
+        }
     }
     
     #endregion

@@ -27,13 +27,13 @@ public class PlayerState
 
 public class HelloMessage
 {
-    public string Type { get; set; }
+    public string Type { get; set; } = "hello";
     public string NickName { get; set; }
 }
 
 public class MoveMessage
 {
-    public string Type { get; set; }
+    public string Type { get; set; } = "move";
     public string Id { get; set; }
     public float X { get; set; }
     public float Y { get; set; }
@@ -64,8 +64,7 @@ public class SnapshotMessage
     public string Type { get; set; } = "snapshot";
 
     // 아직 정해지지 않은 Physics 데이터는 그대로 전달한다.
-    [System.Text.Json.Serialization.JsonExtensionData]
-    public Dictionary<string, System.Text.Json.JsonElement> Fields { get; set; }
+    public string testData { get; set; } = "testsnapshot";
 }
 
 public class StateMessage

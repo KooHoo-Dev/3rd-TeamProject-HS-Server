@@ -18,6 +18,10 @@ namespace HelloServer;
 
 public class Room
 {
+    private const string HandleLog = "[Handle]";
+    private const string StateTickLog = "[StateTick]";
+    private const string InputTickLog = "[InputTick]";
+
     // 접속자 한 명.
     private class Member
     {
@@ -70,6 +74,8 @@ public class Room
     private DateTime lastInputGroupLogAt;
     private int snapshotsSinceLog;
     private DateTime lastSnapshotLogAt;
+    private int stateBroadcastsSinceLog;
+    private DateTime lastStateBroadcastLogAt;
 
     public bool IsEmpty => members.IsEmpty;
     
@@ -181,7 +187,7 @@ public class Room
         // 온 메시지에서 사용자가 말한 부분만 읽어준다.
         // .Trim() 함수를 이용해서 앞,뒤 공백을 제거해준다
         string said = chat.Text?.Trim();
-        Console.WriteLine($"[{code}] {chat.NickName} : {said}");
+        Console.WriteLine($"{HandleLog}[{code}] {chat.NickName} : {said}");
         // 예시 출력 : [5623] Jay : 안뇽
         
         // 여기까지 처리됐으면
@@ -306,6 +312,7 @@ public class Room
 
         // states를 배열로 바꿔서 뿌린다(Broadcast)
         await BroadcastAsync(new StateMessage() { Players = players.ToArray() });
+        LogStateBroadcast(players.Count);
     }
     
     public async Task SendGuestInputsToHostAsync()
@@ -368,7 +375,7 @@ public class Room
         // hello인지 확인해준다
         if (kind?.Type != "hello") 
         {
-            Console.WriteLine($"[{code}] 첫 메시지가 hello가 아님 : {first}");
+            Console.WriteLine($"{HandleLog}[{code}] 첫 메시지가 hello가 아님 : {first}");
             return null;
         }
         
@@ -419,7 +426,7 @@ public class Room
             gate.Release();
         }
         
-        Console.WriteLine($"[{code}] {member.User.NickName}({member.User.Id})({(member.User.IsHost ? "Host" : "Guest")}) 들어옴");
+        Console.WriteLine($"{HandleLog}[{code}] {member.User.NickName}({member.User.Id})({(member.User.IsHost ? "Host" : "Guest")}) 들어옴");
         return member;
     }
 
@@ -454,7 +461,7 @@ public class Room
             gate.Release();
         }
         
-        Console.WriteLine($"[{code}] {member.User.NickName}({member.User.Id}) 나감");
+        Console.WriteLine($"{HandleLog}[{code}] {member.User.NickName}({member.User.Id}) 나감");
     }
 
     // 한 사람의 접속부터 끊김까지 통째로 관리하느 ㄴ함수
@@ -508,7 +515,7 @@ public class Room
         string claimed = move.Id == member.User.Id ? "" : $"  (보낸 쪽이 적은 번호 : {move.Id})";
 
         Console.WriteLine(
-            $"[{code}] 받음 {member.User.NickName}({member.User.Id}) " +
+            $"{HandleLog}[{code}] 받음 {member.User.NickName}({member.User.Id}) " +
             $"({member.X,7:F2}, {member.Y,7:F2})  " +
             $"지난 {gap.TotalSeconds:F1}초에 {member.MovesSinceLog}번{claimed}");
 
@@ -529,7 +536,7 @@ public class Room
             gap.TotalSeconds < 1.0 / logMovesPerSecond) return;
 
         Console.WriteLine(
-            $"[{code}] Guest {member.User.NickName}({member.User.Id}) Input " +
+            $"{HandleLog}[{code}] Guest {member.User.NickName}({member.User.Id}) Input " +
             $"({input.X,7:F2}, {input.Y,7:F2}) " +
             $"LShift:{input.IsLeftShiftHold} RShift:{input.IsRightShiftHold}  " +
             $"최근 {seconds:F1}초에 {member.InputsSinceLog}번 수신");
@@ -551,7 +558,7 @@ public class Room
             gap.TotalSeconds < 1.0 / logMovesPerSecond) return;
 
         Console.WriteLine(
-            $"[{code}] Host {host.User.NickName}({host.User.Id})에게 " +
+            $"{InputTickLog}[{code}] Host {host.User.NickName}({host.User.Id})에게 " +
             $"Guest Input Group 전달: Guest {inputGroup.Inputs.Count}명, " +
             $"최근 {seconds:F1}초에 {inputGroupsSinceLog}회 전송");
 
@@ -573,7 +580,7 @@ public class Room
 
         int guestCount = Math.Max(0, members.Count - 1);
         Console.WriteLine(
-            $"[{code}] Host {host.User.NickName}({host.User.Id}) Snapshot Broadcast: " +
+            $"{HandleLog}[{code}] Host {host.User.NickName}({host.User.Id}) Snapshot Broadcast: " +
             $"Guest {guestCount}명, " +
             $"최근 {seconds:F1}초에 {snapshotsSinceLog}회 전달");
 
@@ -594,11 +601,31 @@ public class Room
             gap.TotalSeconds < 1.0 / logMovesPerSecond) return;
 
         Console.WriteLine(
-            $"[{code}] Guest {member.User.NickName}({member.User.Id})의 Snapshot " +
+            $"{HandleLog}[{code}] Guest {member.User.NickName}({member.User.Id})의 Snapshot " +
             $"최근 {seconds:F1}초에 {member.RejectedSnapshotsSinceLog}회 차단");
 
         member.RejectedSnapshotsSinceLog = 0;
         member.LastRejectedSnapshotLogAt = now;
+    }
+
+    // BroadcastLoopAsync에서 보내는 State는 Room 단위로 요약해서 출력한다.
+    private void LogStateBroadcast(int memberCount)
+    {
+        if (logMovesPerSecond <= 0) return;
+
+        stateBroadcastsSinceLog++;
+        DateTime now = DateTime.Now;
+        TimeSpan gap = now - lastStateBroadcastLogAt;
+        double seconds = lastStateBroadcastLogAt == default ? 0 : gap.TotalSeconds;
+        if (lastStateBroadcastLogAt != default &&
+            gap.TotalSeconds < 1.0 / logMovesPerSecond) return;
+
+        Console.WriteLine(
+            $"{StateTickLog}[{code}] State Broadcast: Member {memberCount}명, " +
+            $"최근 {seconds:F1}초에 {stateBroadcastsSinceLog}회 전송");
+
+        stateBroadcastsSinceLog = 0;
+        lastStateBroadcastLogAt = now;
     }
 
 }

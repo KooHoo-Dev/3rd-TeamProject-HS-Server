@@ -7,6 +7,10 @@ namespace HelloServer;
 
 public class RoomHub
 {
+    private const string HandleLog = "[Handle]";
+    private const string StateTickLog = "[StateTick]";
+    private const string InputTickLog = "[InputTick]";
+
     // 방 하나와 그 방에 들어가겠다고 한 사람의 수
     // 방을 만들기 전에(방을 찾은 뒤) 실제로 방이 생성 될때까지는
     // 시간이 조금 걸립니다. 그 사이에 어떤 유저가 나가게되면
@@ -58,7 +62,7 @@ public class RoomHub
                 entry = new Entry()
                     {Room = new Room(code, logMovesPerSecond), Users = 0};
                 rooms.Add(code, entry);
-                Console.WriteLine($"[{code}] 방을 열었다. 총 방의 개수 : {rooms.Count}");
+                Console.WriteLine($"{HandleLog}[{code}] 방을 열었다. 총 방의 개수 : {rooms.Count}");
             }
 
             entry.Users++;
@@ -76,7 +80,7 @@ public class RoomHub
             entry.Users--;
             if (entry.Users > 0) return;
             rooms.Remove(code);
-            Console.WriteLine($"[{code}] 아무도 없어서 방을 지움. 총 방의 개수 {rooms.Count}");
+            Console.WriteLine($"{HandleLog}[{code}] 아무도 없어서 방을 지움. 총 방의 개수 {rooms.Count}");
         }
     }
 
@@ -157,7 +161,7 @@ public class RoomHub
         }
         catch (Exception e)
         {
-            Console.WriteLine($"[RoomHub] Exception: {e.Message}");
+            Console.WriteLine($"{StateTickLog}[RoomHub] Exception: {e.Message}");
         }
     }
     
@@ -203,7 +207,7 @@ public class RoomHub
         }
         catch (Exception e)
         {
-            Console.WriteLine($"[RoomHub] Exception: {e.Message}");
+            Console.WriteLine($"{InputTickLog}[RoomHub] Exception: {e.Message}");
         }
     }
 

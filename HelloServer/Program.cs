@@ -102,13 +102,13 @@ public class Program
             ? "위치 로그는 안 찍는다"
             : $"위치 로그는 사람마다 초당 {logMoves}줄";
 
-        Console.WriteLine($"[방] 초당 {perSecond}번 뿌린다. {moveLog}.");
+        Console.WriteLine($"[Server] StateTick 초당 {perSecond}번. {moveLog}.");
 
         foreach (IPAddress address in Dns.GetHostEntry(Dns.GetHostName()).AddressList)
         {
             if (address.AddressFamily != AddressFamily.InterNetwork) continue;
             if (IPAddress.IsLoopback(address)) continue;
-            Console.WriteLine($"[방] 접속 주소: {address}");
+            Console.WriteLine($"[Server] 접속 주소: {address}");
         }
     }
 
@@ -156,7 +156,7 @@ public class Program
         app.Map("/room", async context =>
         {
             string code = context.Request.Query["code"];
-            Console.WriteLine($"수신된 요청 {code}");
+            Console.WriteLine($"[Study] 수신된 요청 {code}");
         });
 
         
@@ -169,7 +169,7 @@ public class Program
         {
             using StreamReader reader = new StreamReader(context.Request.Body);
             var msg = await reader.ReadToEndAsync();
-            Console.WriteLine($"POST로 들어온 데이터 : {msg}");
+            Console.WriteLine($"[Study] POST로 들어온 데이터 : {msg}");
             // 들어온 message를 가공합니다.
             
             string responseMessage = string.Concat("서버에서 받은거 = ", msg);

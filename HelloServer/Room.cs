@@ -386,7 +386,7 @@ public class Room
             gate.Release();
         }
         
-        Console.WriteLine($"[{code}] {member.User.NickName}({member.User.Id}) 들어옴");
+        Console.WriteLine($"[{code}] {member.User.NickName}({member.User.Id})({(member.IsHost ? "Host" : "Guest")}) 들어옴");
         return member;
     }
 

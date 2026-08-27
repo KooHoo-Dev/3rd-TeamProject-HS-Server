@@ -323,13 +323,11 @@ public class Room
             inputGroup.Inputs.Add(member.LastInput);
         }
 
-        Console.WriteLine($"[{code}] [GIGC] await before Guest Input Group 개수 검증 : {inputGroup.Inputs.Count}개");
         // 새로 받은 Guest Input이 없으면 빈 Group은 보내지 않는다.
         if (inputGroup.Inputs.Count == 0) return;
         
         await SendAsync(host, inputGroup);
         LogGuestInputGroup(host, inputGroup);
-        Console.WriteLine($"[{code}] [GIGC] await after Guest Input Group 개수 검증 : {inputGroup.Inputs.Count}개");
         
         // 전송이 끝나면 null로 초기화
         foreach (Member member in members.Values)

@@ -114,56 +114,56 @@ public class RoomHub
     // 보든 방에 시간(일정 주기)별로 틱을 관리하는 함수 입니다.
     // 틱을 관리하면서 Task.WhenAll을 통해서 방의 메시지들을 방송합니다.
     // (RoomHub -> Room의 함수를 호출)
-    public async Task BroadcastLoopAsync(CancellationToken token)
-    {
-        // 틱별로 상태 동기화 함수를 호출해줍니다.
-        PeriodicTimer timer = new PeriodicTimer(
-            TimeSpan.FromSeconds(1.0 / broadcastPerSecond));
-        // PeriodicTimer?
-        // 비동기 루프 안에서 주기적인 작업 처리를 안전하고 간편하게 해주는
-        // 타이머 클래스 입니다. TimeSpan(검색해보세여)으로 1초당 몇펀 broadcast할지 타이머를
-        // 설정해 놨습니다.
-
-        try
-        {
-            // 타이머가 종료되면 자동으로 false를 반환합니다.
-            while (await timer.WaitForNextTickAsync(token))
-            {
-                // 락을걸기전에 snapshot(복사본)이 들어갈
-                // list를 생성해놓는다
-                List<Room> snapshot = new List<Room>();
-
-                // 위에 설정된 object 객체인 gate를 이용하여 lock을 걸어놓는다.
-                lock (gate)
-                {
-                    if(rooms.Count ==0) continue;
-
-                    foreach (Entry entry in rooms.Values)
-                    {
-                        snapshot.Add(entry.Room);
-                    }
-                }
-
-                List<Task> sending = new List<Task>();
-                foreach (Room room in snapshot)
-                {
-                    // 상태정보 보내는 Task를 가져와서 sending에 추가해준다.
-                    sending.Add(room.BroadcastStateAsync());
-                }
-                
-                await Task.WhenAll(sending);
-            }
-
-        }
-        catch (OperationCanceledException)
-        {
-            // 서버가 꺼지는 중.
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine($"{StateTickLog}[RoomHub] Exception: {e.Message}");
-        }
-    }
+    // public async Task BroadcastLoopAsync(CancellationToken token)
+    // {
+    //     // 틱별로 상태 동기화 함수를 호출해줍니다.
+    //     PeriodicTimer timer = new PeriodicTimer(
+    //         TimeSpan.FromSeconds(1.0 / broadcastPerSecond));
+    //     // PeriodicTimer?
+    //     // 비동기 루프 안에서 주기적인 작업 처리를 안전하고 간편하게 해주는
+    //     // 타이머 클래스 입니다. TimeSpan(검색해보세여)으로 1초당 몇펀 broadcast할지 타이머를
+    //     // 설정해 놨습니다.
+    //
+    //     try
+    //     {
+    //         // 타이머가 종료되면 자동으로 false를 반환합니다.
+    //         while (await timer.WaitForNextTickAsync(token))
+    //         {
+    //             // 락을걸기전에 snapshot(복사본)이 들어갈
+    //             // list를 생성해놓는다
+    //             List<Room> snapshot = new List<Room>();
+    //
+    //             // 위에 설정된 object 객체인 gate를 이용하여 lock을 걸어놓는다.
+    //             lock (gate)
+    //             {
+    //                 if(rooms.Count ==0) continue;
+    //
+    //                 foreach (Entry entry in rooms.Values)
+    //                 {
+    //                     snapshot.Add(entry.Room);
+    //                 }
+    //             }
+    //
+    //             List<Task> sending = new List<Task>();
+    //             foreach (Room room in snapshot)
+    //             {
+    //                 // 상태정보 보내는 Task를 가져와서 sending에 추가해준다.
+    //                 sending.Add(room.BroadcastStateAsync());
+    //             }
+    //             
+    //             await Task.WhenAll(sending);
+    //         }
+    //
+    //     }
+    //     catch (OperationCanceledException)
+    //     {
+    //         // 서버가 꺼지는 중.
+    //     }
+    //     catch (Exception e)
+    //     {
+    //         Console.WriteLine($"{StateTickLog}[RoomHub] Exception: {e.Message}");
+    //     }
+    // }
     
     public async Task SendGuestInputsToHostLoopAsync(CancellationToken token)
     {

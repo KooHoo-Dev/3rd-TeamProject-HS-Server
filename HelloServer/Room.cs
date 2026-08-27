@@ -292,28 +292,28 @@ public class Room
 
     // 지금 이 방의 사람들 위치를 한번씩 뿌린다.
     // 언제 뿌릴지는 RoomHub에서 정한다.
-    public async Task BroadcastStateAsync()
-    {
-        // 방에 멤버가 없다면(방이 사라질때) 보내지 않는다.
-        if (members.IsEmpty) return;
-        
-        // 사람마다 위치 데이터 객체 하나씩 만든다.
-        List<PlayerState> players = new List<PlayerState>();
-
-        foreach (Member member in members.Values)
-        {
-            players.Add(new PlayerState()
-            {
-                Id = member.User.Id,
-                X = member.X,
-                Y = member.Y,
-            });
-        }
-
-        // states를 배열로 바꿔서 뿌린다(Broadcast)
-        await BroadcastAsync(new StateMessage() { Players = players.ToArray() });
-        LogStateBroadcast(players.Count);
-    }
+    // public async Task BroadcastStateAsync()
+    // {
+    //     // 방에 멤버가 없다면(방이 사라질때) 보내지 않는다.
+    //     if (members.IsEmpty) return;
+    //     
+    //     // 사람마다 위치 데이터 객체 하나씩 만든다.
+    //     List<PlayerState> players = new List<PlayerState>();
+    //
+    //     foreach (Member member in members.Values)
+    //     {
+    //         players.Add(new PlayerState()
+    //         {
+    //             Id = member.User.Id,
+    //             X = member.X,
+    //             Y = member.Y,
+    //         });
+    //     }
+    //
+    //     // states를 배열로 바꿔서 뿌린다(Broadcast)
+    //     await BroadcastAsync(new StateMessage() { Players = players.ToArray() });
+    //     LogStateBroadcast(players.Count);
+    // }
     
     public async Task SendGuestInputsToHostAsync()
     {

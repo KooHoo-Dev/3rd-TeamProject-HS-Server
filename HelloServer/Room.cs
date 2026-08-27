@@ -317,23 +317,37 @@ public class Room
         GuestInputGroupMessage inputGroup = new GuestInputGroupMessage();
         foreach (Member member in members.Values)
         {
-            // Host와 아직 Input이 없는 Guest는 Group에 넣지 않는다.
-            // 일단 보류 그냥 호스트 쪽에서 LastInput null이면 입력 안한 걸로 처리
-            if (member.User.IsHost || member.LastInput == null) continue;
-            inputGroup.Inputs.Add(member.LastInput);
+            if (member.User.IsHost) continue;
+
+            GuestInputMessage input =
+                Interlocked.Exchange(ref member.LastInput, null);
+
+            if (input != null)
+                inputGroup.Inputs.Add(input);
         }
 
-        // 새로 받은 Guest Input이 없으면 빈 Group은 보내지 않는다.
         if (inputGroup.Inputs.Count == 0) return;
-        
-        await SendAsync(host, inputGroup);
+
         LogGuestInputGroup(host, inputGroup);
-        
-        // 전송이 끝나면 null로 초기화
-        foreach (Member member in members.Values)
-        {
-            if (member.User.IsHost == false) member.LastInput = null;
-        }
+        await SendAsync(host, inputGroup); 
+        // foreach (Member member in members.Values)
+        // {
+        //     // Host와 아직 Input이 없는 Guest는 Group에 넣지 않는다.
+        //     if (member.User.IsHost || member.LastInput == null) continue;
+        //     inputGroup.Inputs.Add(member.LastInput);
+        // }
+        //
+        // // 새로 받은 Guest Input이 없으면 빈 Group은 보내지 않는다.
+        // if (inputGroup.Inputs.Count == 0) return;
+        //
+        // await SendAsync(host, inputGroup);
+        // LogGuestInputGroup(host, inputGroup);
+        //
+        // // 전송이 끝나면 null로 초기화
+        // foreach (Member member in members.Values)
+        // {
+        //     if (member.User.IsHost == false) member.LastInput = null;
+        // }
     }
     
     #endregion

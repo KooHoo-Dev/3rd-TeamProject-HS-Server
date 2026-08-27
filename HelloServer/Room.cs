@@ -39,7 +39,6 @@ public class Room
         // 출력 서식을 따로 지정할 수 있습니다. 그거는 MS 홈페이지 가서 보세요
         public DateTime LastLogAt;
 
-        public bool isSendedBefore;
         public GuestInputMessage LastInput;
         public int InputsSinceLog;
         public DateTime LastInputLogAt;

@@ -23,7 +23,6 @@ public class Room
     {
         public User User;
         public WebSocket Socket;
-        public bool IsHost;
 
         // 원래는 벡터로 Position으로 묶어서 사용하는게 좋습니다.
         // 님들이 개발할때는 그렇게 하세여
@@ -85,7 +84,7 @@ public class Room
     {
         foreach (Member member in members.Values)
         {
-            if (member.IsHost) return member;
+            if (member.User.IsHost) return member;
         }
 
         return null;
@@ -195,7 +194,7 @@ public class Room
     private void HandleInputAsync(Member member, string text)
     {
         // Host의 입력은 자기 자신에게 다시 보내지 않는다.
-        if (member.IsHost) return;
+        if (member.User.IsHost) return;
 
         Member host = GetHost();
         // Host가 없으면 이번 입력은 무시한다.
@@ -214,7 +213,7 @@ public class Room
     private async Task HandleSnapshotAsync(Member member, string text)
     {
         // Guest는 authoritative Snapshot을 전달할 수 없다.
-        if (member.IsHost == false)
+        if (member.User.IsHost == false)
         {
             LogRejectedSnapshot(member);
             return;
@@ -333,7 +332,7 @@ public class Room
         // 전송이 끝나면 null로 초기화
         foreach (Member member in members.Values)
         {
-            if (member.IsHost == false) member.LastInput = null;
+            if (member.User.IsHost == false) member.LastInput = null;
         }
     }
     
@@ -368,6 +367,7 @@ public class Room
         member.User = new User();
         member.User.Id = id;
         member.User.NickName = hello.NickName.Trim();
+
         
         // 들어오고 나가는 일은 한사람에 한명씩 해야합니다.
         // 사람이 들어오면 현재 방에 있는 멤버들에게도 메시지를 보내줘야겠죠?
@@ -378,8 +378,7 @@ public class Room
         try
         {
             // 방에 처음 들어오는 Member가 Host가 된다.
-            member.IsHost = members.IsEmpty;
-
+            member.User.IsHost = members.IsEmpty;
             // 누군가가 hello 메시지를 보냈으면
             // welcome 메시지를 이용해서
             // 현재 방 사람들을 접속한 유저에게 전송하고,
@@ -394,6 +393,7 @@ public class Room
             welcome.RoomCode = code; // 서버 방정보를 보낸다
             welcome.User = member.User; // 서버에서 생성한 유저 정보를 접속자에게 보낸다
             welcome.Users = already.ToArray(); // 현재 방에 있는 유저들 정보를 보낸다
+            Console.WriteLine($"Compare ishost of welcome and member: welcome - {welcome.User.IsHost}, member - {member.User.IsHost}");
             await SendAsync(member, welcome);
 
             members[member.User.Id] = member;
@@ -406,7 +406,7 @@ public class Room
             gate.Release();
         }
         
-        Console.WriteLine($"[{code}] {member.User.NickName}({member.User.Id})({(member.IsHost ? "Host" : "Guest")}) 들어옴");
+        Console.WriteLine($"[{code}] {member.User.NickName}({member.User.Id})({(member.User.IsHost ? "Host" : "Guest")}) 들어옴");
         return member;
     }
 
@@ -420,7 +420,7 @@ public class Room
 
         try
         {
-            bool wasHost = member.IsHost;
+            bool wasHost = member.User.IsHost;
             members.TryRemove(member.User.Id, out _);
 
             // Host가 나갔고 방에 사람이 남아 있으면 한 명을 다음 Host로 지정한다.
@@ -428,7 +428,7 @@ public class Room
             {
                 foreach (Member other in members.Values)
                 {
-                    other.IsHost = true;
+                    other.User.IsHost = true;
                     break;
                 }
             }

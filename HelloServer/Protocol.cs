@@ -22,18 +22,18 @@ public class PlayerState
 {
     public string Id { get; set; }
 
-    public PlayerState Body;
-    public PlayerState LeftArmTop;
-    public PlayerState RightArmTop;
-    public PlayerState LeftArmBottom;
-    public PlayerState RightArmBottom;
+    public PartState Body;
+    public PartState LeftArmTop;
+    public PartState RightArmTop;
+    public PartState LeftArmBottom;
+    public PartState RightArmBottom;
 }
 
 public class PartState
 {
     public float X { get; set; }
     public float Y { get; set; }
-        
+    
     public float QuaternionZ { get; set; }
 }
 
@@ -114,6 +114,7 @@ public class WelcomeMessage
 
     public User User { get; set; }
     public User[] Users { get; set; }
+    public SnapshotMessage SnapshotMessage { get; set; }
 }
 
 public class JoinMessage

@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -279,6 +280,7 @@ public class Room
         {
             // 보내는 순간 끊길 수 있음.
             // 나가기 처리는 다른 곳에서 함.
+            Console.WriteLine("[Error] SocketException Snapshot Broadcast Dead");
         }
         finally // 예외가 발생하든 안하든 꼭 처리되는 finally 구문(찾아 보십쇼) 
         {

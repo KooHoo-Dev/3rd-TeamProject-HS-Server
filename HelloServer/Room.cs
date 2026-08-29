@@ -229,8 +229,8 @@ public class Room
         SnapshotMessage snapshot = JsonSerializer.Deserialize<SnapshotMessage>(text);
         lastSnapshot = snapshot;
         // 송신 Host를 제외한 나머지 Member에게만 전달한다.
-        await BroadcastAsync(snapshot, member.User.Id);
         LogSnapshot(member, snapshot);
+        await BroadcastAsync(snapshot, member.User.Id);
     }
 
     #endregion

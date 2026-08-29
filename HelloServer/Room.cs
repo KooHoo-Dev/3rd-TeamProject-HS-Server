@@ -418,7 +418,6 @@ public class Room
             welcome.RoomCode = code; // 서버 방정보를 보낸다
             welcome.User = member.User; // 서버에서 생성한 유저 정보를 접속자에게 보낸다
             welcome.Users = already.ToArray(); // 현재 방에 있는 유저들 정보를 보낸다
-            welcome.SnapshotMessage = lastSnapshot;
             await SendAsync(member, welcome);
 
             members[member.User.Id] = member;

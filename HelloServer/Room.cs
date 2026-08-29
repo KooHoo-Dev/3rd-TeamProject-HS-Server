@@ -76,6 +76,7 @@ public class Room
     private DateTime lastSnapshotLogAt;
     private int stateBroadcastsSinceLog;
     private DateTime lastStateBroadcastLogAt;
+    private SnapshotMessage lastSnapshot;
 
     public bool IsEmpty => members.IsEmpty;
     
@@ -226,6 +227,7 @@ public class Room
         }
 
         SnapshotMessage snapshot = JsonSerializer.Deserialize<SnapshotMessage>(text);
+        lastSnapshot = snapshot;
         // 송신 Host를 제외한 나머지 Member에게만 전달한다.
         await BroadcastAsync(snapshot, member.User.Id);
         LogSnapshot(member, snapshot);
@@ -414,6 +416,7 @@ public class Room
             welcome.RoomCode = code; // 서버 방정보를 보낸다
             welcome.User = member.User; // 서버에서 생성한 유저 정보를 접속자에게 보낸다
             welcome.Users = already.ToArray(); // 현재 방에 있는 유저들 정보를 보낸다
+            welcome.SnapshotMessage = lastSnapshot;
             await SendAsync(member, welcome);
 
             members[member.User.Id] = member;

@@ -22,11 +22,14 @@ public class PlayerState
 {
     public string Id { get; set; }
 
-    public PlayerState Body;
-    public PlayerState LeftArmTop;
-    public PlayerState RightArmTop;
-    public PlayerState LeftArmBottom;
-    public PlayerState RightArmBottom;
+    public PartState Body { get; set; }
+    public PartState LeftArmTop { get; set; }
+    public PartState RightArmTop { get; set; }
+    public PartState LeftArmBottom { get; set; }
+    public PartState RightArmBottom { get; set; }
+    
+    public bool IsLeftGrab { get; set; }
+    public bool IsRightGrab { get; set; }
 }
 
 public class PartState
@@ -34,7 +37,7 @@ public class PartState
     public float X { get; set; }
     public float Y { get; set; }
         
-    public float QuaternionZ { get; set; }
+    public float RotationZ { get; set; }
 }
 
 // 물고기 코드

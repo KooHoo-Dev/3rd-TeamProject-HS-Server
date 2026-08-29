@@ -294,8 +294,8 @@ public class Room
         return SendRawAsync(member, JsonSerializer.Serialize(message, message.GetType()));
     }
 
-    // 지금 이 방의 사람들 위치를 한번씩 뿌린다.
-    // 언제 뿌릴지는 RoomHub에서 정한다.
+    // // 지금 이 방의 사람들 위치를 한번씩 뿌린다.
+    // // 언제 뿌릴지는 RoomHub에서 정한다.
     // public async Task BroadcastStateAsync()
     // {
     //     // 방에 멤버가 없다면(방이 사라질때) 보내지 않는다.

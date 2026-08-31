@@ -28,13 +28,6 @@ public class Room
     {
         public User User;
         public WebSocket Socket;
-
-        // 원래는 벡터로 Position으로 묶어서 사용하는게 좋습니다.
-        // 님들이 개발할때는 그렇게 하세여
-        public float X;
-        public float Y;
-
-        public int MovesSinceLog;
         
         // DateTime?
         // : 날짜랑 시간을 표현하고 조작할 때 사용하는 구조체 입니다.

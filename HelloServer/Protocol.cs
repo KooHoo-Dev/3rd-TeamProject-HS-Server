@@ -66,6 +66,7 @@ public class FishState
 public class PlankState
 {
     public string Id { get; set; }       // 물고기 고유 식별 번호 (풀에서 생성 시 부여)
+    public bool Index { get; set; }
     public bool IsActive { get; set; }
     public float X { get; set; }          // 현재 위치 X
     public float Y { get; set; }          // 현재 위치 Y

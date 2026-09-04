@@ -145,7 +145,7 @@ public class Room
             if (roomExpired)
             {
                 Console.WriteLine($"[RoomExpired] [{code}] {member.User.NickName}({member.User.Id})({(member.User.IsHost ? "Host" : "Guest")}) 방 만료. 접속 해제.");
-                break;
+                return;
             }
             
             if (string.IsNullOrEmpty(text)) return;
@@ -295,6 +295,9 @@ public class Room
     {
         Member host = GetHost();
         // 아직 hello 처리가 끝나지 않은 Room은 Host가 없을 수 있다.
+        // 이거 처리 안해줘서 처음에 가끔 의문사 당했구나...
+        // 흐름 2개가 동시에 다르게 돌아가면 이렇게 억까 당할 수 있다...
+        // hello 쪽 핸들이 끝나고 얘가 실행되어야하는데 이전에 바로 실행되버리는 서순 문제
         if (host == null) return;
 
         GuestInputGroupMessage inputGroup = new GuestInputGroupMessage();
@@ -313,24 +316,6 @@ public class Room
 
         LogGuestInputGroup(host, inputGroup);
         await SendAsync(host, inputGroup); 
-        // foreach (Member member in members.Values)
-        // {
-        //     // Host와 아직 Input이 없는 Guest는 Group에 넣지 않는다.
-        //     if (member.User.IsHost || member.LastInput == null) continue;
-        //     inputGroup.Inputs.Add(member.LastInput);
-        // }
-        //
-        // // 새로 받은 Guest Input이 없으면 빈 Group은 보내지 않는다.
-        // if (inputGroup.Inputs.Count == 0) return;
-        //
-        // await SendAsync(host, inputGroup);
-        // LogGuestInputGroup(host, inputGroup);
-        //
-        // // 전송이 끝나면 null로 초기화
-        // foreach (Member member in members.Values)
-        // {
-        //     if (member.User.IsHost == false) member.LastInput = null;
-        // }
     }
     
     #endregion
@@ -432,12 +417,12 @@ public class Room
             // 나간 사람이 호스트이면
             if (member.User.IsHost)
             {
-                Console.WriteLine($" 호스트 {member.User.Id}");
                 Console.WriteLine($"[RoomExpired] [{code}] {member.User.NickName}({member.User.Id})({(member.User.IsHost ? "Host" : "Guest")}) 호스트가 나가서 방 폭파");
                 roomExpired = true;
             }
 
             // 퇴장한것을 알려줍니다.
+            Console.WriteLine($"[Leave] [{code}] {member.User.NickName}({member.User.Id})({(member.User.IsHost ? "Host" : "Guest")}) 나감");
             await BroadcastAsync(new LeaveMessage { Id = member.User.Id }, member.User.Id);
         }
         finally

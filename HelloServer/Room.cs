@@ -138,13 +138,16 @@ public class Room
         // 토큰에 취소 요청이 없으면 계속 돈다
         while (token.IsCancellationRequested == false)
         {
+            string text = await ReceiveTextAsync(member.Socket, token);
+            // text가 비어있으면 닫았다는 뜻
+            
+            // 호스트가 방 폭파시켰으면
             if (roomExpired)
             {
                 Console.WriteLine($"[RoomExpired] [{code}] {member.User.NickName}({member.User.Id})({(member.User.IsHost ? "Host" : "Guest")}) 방 만료. 접속 해제.");
                 break;
             }
-            string text = await ReceiveTextAsync(member.Socket, token);
-            // text가 비어있으면 닫았다는 뜻
+            
             if (string.IsNullOrEmpty(text)) return;
 
             // 아래부터는 Json 텍스트 처리가 된다.
@@ -462,7 +465,7 @@ public class Room
             // 루프를 호출해준다.
             await ReceiveLoopAsync(member, token);
         }
-        catch (OperationCanceledException)
+        catch (Exception e)
         {
             // 서버 꺼지는 중. 정상임
         }

@@ -140,6 +140,7 @@ public class Room
         {
             if (roomExpired)
             {
+                Console.WriteLine($"[RoomExpired] [{code}] {member.User.NickName}({member.User.Id})({(member.User.IsHost ? "Host" : "Guest")}) 방 만료. 접속 해제.");
                 break;
             }
             string text = await ReceiveTextAsync(member.Socket, token);
@@ -425,6 +426,13 @@ public class Room
             //         break;
             //     }
             // }
+            // 나간 사람이 호스트이면
+            if (member.User.IsHost)
+            {
+                Console.WriteLine($" 호스트 {member.User.Id}");
+                Console.WriteLine($"[RoomExpired] [{code}] {member.User.NickName}({member.User.Id})({(member.User.IsHost ? "Host" : "Guest")}) 호스트가 나가서 방 폭파");
+                roomExpired = true;
+            }
 
             // 퇴장한것을 알려줍니다.
             await BroadcastAsync(new LeaveMessage { Id = member.User.Id }, member.User.Id);
@@ -463,9 +471,6 @@ public class Room
             // 루프가 종료되었으면 연결이 끊어진 것
             // 퇴장 처리 해준다
             
-            // 나간 사람이 호스트이면
-            if (member.User.IsHost)
-                roomExpired = true;
             
             await LeaveAsync(member);
         }

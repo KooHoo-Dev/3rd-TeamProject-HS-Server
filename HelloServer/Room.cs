@@ -71,6 +71,7 @@ public class Room
     private int stateBroadcastsSinceLog;
     private DateTime lastStateBroadcastLogAt;
     private SnapshotMessage lastSnapshot;
+    private bool roomExpired;
 
     public bool IsEmpty => members.IsEmpty;
     
@@ -137,6 +138,10 @@ public class Room
         // 토큰에 취소 요청이 없으면 계속 돈다
         while (token.IsCancellationRequested == false)
         {
+            if (roomExpired)
+            {
+                break;
+            }
             string text = await ReceiveTextAsync(member.Socket, token);
             // text가 비어있으면 닫았다는 뜻
             if (string.IsNullOrEmpty(text)) return;
@@ -160,36 +165,6 @@ public class Room
             // 구간을 만들면 되겠죠?   
         }
     }
-
-    // // 이동 관련 메시지를 처리하는 함수
-    // private void HandleMove(Member member, string text)
-    // {
-    //     // 메시지를 읽어준다
-    //     MoveMessage move = JsonSerializer.Deserialize<MoveMessage>(text);
-    //     // move 메시지의 내용을 member의 X,Y 내용에 카피해준다
-    //     member.X = move.X;
-    //     member.Y = move.Y;
-    //     member.MovesSinceLog++;
-    //     
-    //     LogMove(member, move);
-    // }
-
-    // 채팅 관련 메시지를 처리하는 함수
-    // private async Task HandleChatAsync(Member member, string text)
-    // {
-    //     // 먼저 Chat메시지를 읽어 준다
-    //     ChatMessage chat = JsonSerializer.Deserialize<ChatMessage>(text);
-    //     // 온 메시지에서 사용자가 말한 부분만 읽어준다.
-    //     // .Trim() 함수를 이용해서 앞,뒤 공백을 제거해준다
-    //     string said = chat.Text?.Trim();
-    //     Console.WriteLine($"{HandleLog}[{code}] {chat.NickName} : {said}");
-    //     // 예시 출력 : [5623] Jay : 안뇽
-    //     
-    //     // 여기까지 처리됐으면
-    //     // (서버) -> (다른 클라이언트) 들에게 보낸다
-    //     // 받은 객체를 그대로 보낸다.
-    //     await BroadcastAsync(chat);
-    // }
 
     // Guest가 보낸 입력을 Room 자체적으로 저장한다
     private void HandleInputAsync(Member member, string text)
@@ -441,14 +416,15 @@ public class Room
             members.TryRemove(member.User.Id, out _);
 
             // Host가 나갔고 방에 사람이 남아 있으면 한 명을 다음 Host로 지정한다.
-            if (wasHost)
-            {
-                foreach (Member other in members.Values)
-                {
-                    other.User.IsHost = true;
-                    break;
-                }
-            }
+            // 일단 잠시 비활성화... 바로 호스트 나가면 방 터트리기
+            // if (wasHost)
+            // {
+            //     foreach (Member other in members.Values)
+            //     {
+            //         other.User.IsHost = true;
+            //         break;
+            //     }
+            // }
 
             // 퇴장한것을 알려줍니다.
             await BroadcastAsync(new LeaveMessage { Id = member.User.Id }, member.User.Id);
@@ -486,6 +462,11 @@ public class Room
         {
             // 루프가 종료되었으면 연결이 끊어진 것
             // 퇴장 처리 해준다
+            
+            // 나간 사람이 호스트이면
+            if (member.User.IsHost)
+                roomExpired = true;
+            
             await LeaveAsync(member);
         }
     }

@@ -78,7 +78,10 @@ public class RoomHub
             // 예외 처리 한번 해준다
             if (rooms.TryGetValue(code, out Entry entry) == false) return;
             entry.Users--;
+            
+            // 호스트 나가면 방 폭파여서 일단 없어도 될거 같은데 남기기
             if (entry.Users > 0) return;
+            
             rooms.Remove(code);
             Console.WriteLine($"{HandleLog}[{code}] 아무도 없어서 방을 지움. 총 방의 개수 {rooms.Count}");
         }

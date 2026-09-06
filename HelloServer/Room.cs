@@ -349,6 +349,10 @@ public class Room
         member.User = new User();
         member.User.Id = id;
         member.User.NickName = hello.NickName.Trim();
+        
+        member.User.R = hello.R;
+        member.User.G = hello.G;
+        member.User.B = hello.B;
 
         
         // 들어오고 나가는 일은 한사람에 한명씩 해야합니다.

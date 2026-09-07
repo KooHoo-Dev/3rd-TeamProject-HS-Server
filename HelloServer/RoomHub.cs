@@ -1,4 +1,5 @@
-﻿using System.Net.WebSockets;
+﻿using System.Diagnostics;
+using System.Net.WebSockets;
 
 namespace HelloServer;
 
@@ -10,6 +11,7 @@ public class RoomHub
     private const string HandleLog = "[Handle]";
     private const string StateTickLog = "[StateTick]";
     private const string InputTickLog = "[InputTick]";
+    private const int MaxRoomMember = 4;
 
     // 방 하나와 그 방에 들어가겠다고 한 사람의 수
     // 방을 만들기 전에(방을 찾은 뒤) 실제로 방이 생성 될때까지는
@@ -95,6 +97,11 @@ public class RoomHub
     public async Task HandleAsync(string code, 
         WebSocket socket, CancellationToken token)
     {
+        if (CheckRoomIsFull(code))
+        {
+            Console.WriteLine($"[Rejected][{code}] 방이 꽉차서 연결 거부");
+            return;
+        }
         Room room = Enter(code);
         // lastId를 여러 접속자가 동시에 수정 할수 있으므로
         // Interlocked를 이용해서 락을 걸어줍니다.
@@ -111,6 +118,14 @@ public class RoomHub
         {
             // room.HandleAsync는 유저가 퇴장할때 끝납니다.
             Leave(code);
+        }
+    }
+
+    private bool CheckRoomIsFull(string code)
+    {
+        lock (gate)
+        {
+            return rooms.TryGetValue(code, out Entry entry) && entry.Users >= MaxRoomMember;
         }
     }
 

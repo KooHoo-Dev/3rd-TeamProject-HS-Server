@@ -59,17 +59,18 @@ public class RoomHub
         //  잠글 수 있음)
         lock (gate)
         {
-            if (rooms.TryGetValue(code, out Entry entry) == false)
+            if (rooms.TryGetValue(code, out Entry entry) && entry.Users < MaxRoomMember)
             {
                 entry = new Entry()
                     {Room = new Room(code, logMovesPerSecond), Users = 0};
                 rooms.Add(code, entry);
                 Console.WriteLine($"{HandleLog}[{code}] 방을 열었다. 총 방의 개수 : {rooms.Count}");
+                entry.Users++;
+                return entry.Room;
             }
-
-            entry.Users++;
-            return entry.Room;
         }
+        Console.WriteLine($"[Rejected][{code}] 방이 꽉차서 연결 거부");
+        return null;
     }
 
     // 방을 떠나고, 아무도 없으면 방을 지운다.
@@ -97,12 +98,15 @@ public class RoomHub
     public async Task HandleAsync(string code, 
         WebSocket socket, CancellationToken token)
     {
-        if (CheckRoomIsFull(code))
+        Room room = Enter(code);
+        
+        // null을 리턴했으면 방코드가 유효하지 않거나 인원 제한이 터진것
+        if (room == null)
         {
-            Console.WriteLine($"[Rejected][{code}] 방이 꽉차서 연결 거부");
+            await socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "Leave Room", CancellationToken.None);
+            socket.Dispose();
             return;
         }
-        Room room = Enter(code);
         // lastId를 여러 접속자가 동시에 수정 할수 있으므로
         // Interlocked를 이용해서 락을 걸어줍니다.
         // 이것도 외워버리십쇼.
@@ -118,14 +122,6 @@ public class RoomHub
         {
             // room.HandleAsync는 유저가 퇴장할때 끝납니다.
             Leave(code);
-        }
-    }
-
-    private bool CheckRoomIsFull(string code)
-    {
-        lock (gate)
-        {
-            return rooms.TryGetValue(code, out Entry entry) && entry.Users >= MaxRoomMember;
         }
     }
 

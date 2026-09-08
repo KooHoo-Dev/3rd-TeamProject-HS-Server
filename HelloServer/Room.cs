@@ -121,7 +121,11 @@ public class Room
                 await socket.ReceiveAsync(new ArraySegment<byte>(buffer), token);
 
             // 예외 처리부터 해줍니다. 소켓이 닫혔을 경우.
-            if (result.MessageType == WebSocketMessageType.Close) return null;
+            if (result.MessageType == WebSocketMessageType.Close)
+            {
+                socket.Dispose();
+                return null;
+            }
             // 일단 메세지가 도착을 했으면 StringBuilder에 이어 붙혀 줍니다. 
             builder.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
             // 메세지가 끝났니?. 끝났다면
@@ -138,15 +142,17 @@ public class Room
         // 토큰에 취소 요청이 없으면 계속 돈다
         while (token.IsCancellationRequested == false)
         {
-            string text = await ReceiveTextAsync(member.Socket, token);
-            // text가 비어있으면 닫았다는 뜻
-            
             // 호스트가 방 폭파시켰으면
             if (roomExpired)
             {
                 Console.WriteLine($"[RoomExpired] [{code}] {member.User.NickName}({member.User.Id})({(member.User.IsHost ? "Host" : "Guest")}) 방 만료. 접속 해제.");
+                await member.Socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "Room Expired", CancellationToken.None);
+                member.Socket.Dispose();
                 return;
             }
+            
+            string text = await ReceiveTextAsync(member.Socket, token);
+            // text가 비어있으면 닫았다는 뜻
             
             if (string.IsNullOrEmpty(text)) return;
 
@@ -342,18 +348,29 @@ public class Room
         
         // 아래서 부터는 정상처리
         HelloMessage hello = JsonSerializer.Deserialize<HelloMessage>(first);
+        if (hello == null)
+        {
+            Console.WriteLine($"{HandleLog}[{code}] hello가 null : {first}");
+            return null;
+        }
         // 메시지와 매개변수를 조합해서 Member객체를 생성한다.
         Member member = new Member();
         member.Socket = socket;
         member.LastLogAt = DateTime.Now; // 들어온 시각으로 맞춰 둔다.
         member.User = new User();
         member.User.Id = id;
-        member.User.NickName = hello.NickName.Trim();
+        if (hello.NickName == null)
+        {
+            member.User.NickName = "꼬마돌";
+        }
+        else
+        {
+            member.User.NickName = hello.NickName.Trim();
+        }
         
         member.User.R = hello.R;
         member.User.G = hello.G;
         member.User.B = hello.B;
-
         
         // 들어오고 나가는 일은 한사람에 한명씩 해야합니다.
         // 사람이 들어오면 현재 방에 있는 멤버들에게도 메시지를 보내줘야겠죠?
@@ -384,7 +401,6 @@ public class Room
             members[member.User.Id] = member;
             // join 메시지를 뿌린다. 접속자인 member 에게는 보내지 않는다
             await BroadcastAsync(new JoinMessage { User = member.User }, member.User.Id);
-
         }
         finally
         {
@@ -405,7 +421,6 @@ public class Room
 
         try
         {
-            bool wasHost = member.User.IsHost;
             members.TryRemove(member.User.Id, out _);
 
             // Host가 나갔고 방에 사람이 남아 있으면 한 명을 다음 Host로 지정한다.
@@ -454,16 +469,19 @@ public class Room
             // 루프를 호출해준다.
             await ReceiveLoopAsync(member, token);
         }
-        catch (Exception e)
+        catch (OperationCanceledException e)
         {
-            // 서버 꺼지는 중. 정상임
-        }
+            Console.Error.WriteLine($"[{code}] 접속 종료 ({e})");
+        } // 서버 종료. 정상
+        catch (WebSocketException e)
+        {
+            Console.Error.WriteLine($"[{code}] 접속 종료 ({e})");
+        }                  // 창 그냥 껐다. 흔한 일
+        catch (Exception e) { Console.Error.WriteLine($"[{code}] 처리 예외 ({id}): {e}"); } 
         finally
         {
             // 루프가 종료되었으면 연결이 끊어진 것
             // 퇴장 처리 해준다
-            
-            
             await LeaveAsync(member);
         }
     }

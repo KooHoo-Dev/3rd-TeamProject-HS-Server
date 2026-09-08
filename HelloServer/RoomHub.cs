@@ -59,12 +59,16 @@ public class RoomHub
         //  잠글 수 있음)
         lock (gate)
         {
-            if (rooms.TryGetValue(code, out Entry entry) == false || entry.Users < MaxRoomMember)
+            bool hasCode = rooms.TryGetValue(code, out Entry entry);
+            if (hasCode == false || entry.Users < MaxRoomMember)
             {
-                entry = new Entry()
-                    {Room = new Room(code, logMovesPerSecond), Users = 0};
-                rooms.Add(code, entry);
-                Console.WriteLine($"{HandleLog}[{code}] 방을 열었다. 총 방의 개수 : {rooms.Count}");
+                if (hasCode == false)
+                {
+                    entry = new Entry()
+                        {Room = new Room(code, logMovesPerSecond), Users = 0};
+                    rooms.Add(code, entry);
+                    Console.WriteLine($"{HandleLog}[{code}] 방을 열었다. 총 방의 개수 : {rooms.Count}");
+                }
                 entry.Users++;
                 return entry.Room;
             }

@@ -59,7 +59,7 @@ public class RoomHub
         //  잠글 수 있음)
         lock (gate)
         {
-            if (rooms.TryGetValue(code, out Entry entry) && entry.Users < MaxRoomMember)
+            if (rooms.TryGetValue(code, out Entry entry) == false || entry.Users < MaxRoomMember)
             {
                 entry = new Entry()
                     {Room = new Room(code, logMovesPerSecond), Users = 0};

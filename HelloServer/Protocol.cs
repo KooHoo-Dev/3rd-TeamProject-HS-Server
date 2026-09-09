@@ -3,13 +3,6 @@ using System.Collections.Generic;
 
 namespace HelloServer
 {
-    public enum GameResultState
-    {
-        None,
-        GameOver,
-        GameWin
-    }
-
     public class User
     {
         public string Id { get; set; }
@@ -144,7 +137,6 @@ namespace HelloServer
         public bool IsDay { get; set; }      // 흐른 시간 혹은 DayLoop 상태
         public int ActivePlayerCount { get; set; }
         public int ArrivedPlayerCount { get; set; }
-        public GameResultState GameResult { get; set; }
         public int TutorialReadyCount { get; set; }
         public int TutorialTotalCount { get; set; }
         public bool IsStartButtonPressed { get; set; }

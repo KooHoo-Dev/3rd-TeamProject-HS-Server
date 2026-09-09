@@ -148,7 +148,7 @@ public class Room
             // 메세지가 끝났니?. 끝났다면
             // StringBuilder.ToString을 호출해서 String을 생성하여 반환합니다. 
             if (result.EndOfMessage) return builder.ToString();
-
+            
             // 아니라면 다시 루프를 반복합니다
         }
     }

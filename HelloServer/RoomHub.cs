@@ -80,6 +80,8 @@ public class RoomHub
     // 방을 떠나고, 아무도 없으면 방을 지운다.
     private void Leave(string code)
     {
+        Room roomToStop = null;
+
         lock (gate)
         {
             // 예외 처리 한번 해준다
@@ -90,8 +92,11 @@ public class RoomHub
             if (entry.Users > 0) return;
             
             rooms.Remove(code);
+            roomToStop = entry.Room;
             Console.WriteLine($"{HandleLog}[{code}] 아무도 없어서 방을 지움. 총 방의 개수 {rooms.Count}");
         }
+
+        roomToStop.Stop();
     }
 
     #endregion
@@ -107,7 +112,7 @@ public class RoomHub
         // null을 리턴했으면 방코드가 유효하지 않거나 인원 제한이 터진것
         if (room == null)
         {
-            await socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "Leave Room", CancellationToken.None);
+            await socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "Room Member Limit", CancellationToken.None);
             socket.Dispose();
             return;
         }

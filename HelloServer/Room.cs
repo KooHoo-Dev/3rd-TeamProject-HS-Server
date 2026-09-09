@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 
 namespace HelloServer;
 
@@ -22,6 +23,7 @@ public class Room
     private const string HandleLog = "[Handle]";
     private const string StateTickLog = "[StateTick]";
     private const string InputTickLog = "[InputTick]";
+    private const int SendTimeoutMilliseconds = 9000;
 
     // 접속자 한 명.
     private class Member
@@ -41,6 +43,7 @@ public class Room
         public DateTime LastInputLogAt;
         public int RejectedSnapshotsSinceLog;
         public DateTime LastRejectedSnapshotLogAt;
+        public int SendFailed;
         
         // 보낼때 여러메시지를 동시에 보내지 않기 위에
         // 사람(멤버)마다 Gate를 하나씩 두고 한번에 하나씩 보내기 위해
@@ -50,6 +53,8 @@ public class Room
         public readonly SemaphoreSlim SendLock 
             = new SemaphoreSlim(1, 1);
     }
+
+    private readonly record struct BroadcastWorkItem(object Message, string ExceptId);
     
     // race condition이 일어나도 여러 쓰레드에서 동시적으로
     // 참조 하여 읽을 수 있는 딕셔너리 입니다. 일반적인 Dictionary를 쓰면
@@ -57,10 +62,16 @@ public class Room
     // 여러 쓰레드에서 동시에 사용하더라도 딕셔너리의 한 상태를 유지 시킬 수 있는
     // 안정성이 보장된 딕셔너리 입니다.
     private readonly ConcurrentDictionary<string, Member> members = new();
+    private readonly Channel<BroadcastWorkItem> broadcastQueue =
+        Channel.CreateUnbounded<BroadcastWorkItem>(
+            new UnboundedChannelOptions { SingleReader = true });
 
     // 들어오고 나가는 메시지 처리(일)을 한줄로 세우는 자물쇠 입니다.
     // lock블록이 await가 안먹어서 사용합니다.
     private readonly SemaphoreSlim gate = new SemaphoreSlim(1, 1);
+    // 호스트가 나가 방이 만료됐을 때, 대기 중인 모든 수신을 깨운다.
+    private readonly CancellationTokenSource roomExpiredCancellation = new();
+    private readonly Task broadcastLoop;
     private readonly string code; // 방번호
     private readonly int logMovesPerSecond; // 룸허브를 통해서 전달 받습니다. 
 
@@ -71,7 +82,7 @@ public class Room
     private int stateBroadcastsSinceLog;
     private DateTime lastStateBroadcastLogAt;
     private SnapshotMessage lastSnapshot;
-    private bool roomExpired;
+    private volatile bool roomExpired;
 
     public bool IsEmpty => members.IsEmpty;
     
@@ -79,6 +90,12 @@ public class Room
     {
         this.code = code;
         this.logMovesPerSecond = logMovesPerSecond;
+        broadcastLoop = BroadcastQueueLoopAsync();
+    }
+
+    public void Stop()
+    {
+        broadcastQueue.Writer.TryComplete();
     }
 
     // 현재 방의 Host를 찾는다.
@@ -196,28 +213,52 @@ public class Room
     }
 
     // Host가 보낸 Snapshot을 같은 방의 Guest들에게 바로 전달한다.
-    private async Task HandleSnapshotAsync(Member member, string text)
+    private Task HandleSnapshotAsync(Member member, string text)
     {
         // Guest는 authoritative Snapshot을 전달할 수 없다.
         if (member.User.IsHost == false)
         {
             LogRejectedSnapshot(member);
-            return;
+            return Task.CompletedTask;
         }
 
         SnapshotMessage snapshot = JsonSerializer.Deserialize<SnapshotMessage>(text);
         lastSnapshot = snapshot;
         // 송신 Host를 제외한 나머지 Member에게만 전달한다.
         LogSnapshot(member, snapshot);
-        await BroadcastAsync(snapshot, member.User.Id);
+        EnqueueBroadcast(snapshot, member.User.Id);
+        return Task.CompletedTask;
     }
 
     #endregion
 
     #region 뿌리기
 
-    // 메시지를 여러명한테 뿌리는 함수
-    private async Task BroadcastAsync(object message, string exceptId = null)
+    // 메시지를 방송 큐에 넣는다. 호출자는 네트워크 전송을 기다리지 않는다.
+    private void EnqueueBroadcast(object message, string exceptId = null)
+    {
+        if (broadcastQueue.Writer.TryWrite(new BroadcastWorkItem(message, exceptId)) == false)
+            Console.Error.WriteLine($"[{code}] 종료된 방송 큐에 메시지를 넣으려 했습니다.");
+    }
+
+    // 방송 큐를 하나씩 읽어 실제 네트워크 전송을 전담한다.
+    private async Task BroadcastQueueLoopAsync()
+    {
+        await foreach (BroadcastWorkItem work in broadcastQueue.Reader.ReadAllAsync())
+        {
+            try
+            {
+                await BroadcastNowAsync(work.Message, work.ExceptId);
+            }
+            catch (Exception e)
+            {
+                Console.Error.WriteLine($"[{code}] 방송 처리 예외: {e}");
+            }
+        }
+    }
+
+    // 메시지를 여러명에게 실제로 뿌리는 함수. 방송 워커만 호출한다.
+    private async Task BroadcastNowAsync(object message, string exceptId = null)
     {
         string json = JsonSerializer.Serialize(message, message.GetType());
         
@@ -241,29 +282,48 @@ public class Room
     private async Task SendRawAsync(Member member, string json)
     {
         // 소켓이 끊겨있는지 확인을 해준다. 보내기전에 마지막 체크
-        if (member.Socket.State != WebSocketState.Open) return;
+        if (member.Socket.State != WebSocketState.Open ||
+            Volatile.Read(ref member.SendFailed) != 0) return;
         
-        // 보내는 중인 메시지가 있다면 lock이 풀릴때까지 잠깐 기다린다.
-        // 그리고 내가 보낼 턴이면 잠궈버린다. 두가지를 동시에 수행합니다.
-        await member.SendLock.WaitAsync();
+        using CancellationTokenSource sendTimeout =
+            new CancellationTokenSource(SendTimeoutMilliseconds);
+        bool lockTaken = false;
 
         try
         {
+            // 보내는 중인 메시지가 있다면 lock이 풀릴때까지 잠깐 기다린다.
+            // 그리고 내가 보낼 턴이면 잠궈버린다. 두가지를 동시에 수행합니다.
+            await member.SendLock.WaitAsync(sendTimeout.Token);
+            lockTaken = true;
+
+            if (member.Socket.State != WebSocketState.Open ||
+                Volatile.Read(ref member.SendFailed) != 0) return;
+
             // 보낼때는 string이 아니라 byte배열로 바꿔준다
             byte[] bytes = Encoding.UTF8.GetBytes(json);
             await member.Socket.SendAsync(
-                bytes, WebSocketMessageType.Text, true, CancellationToken.None);
+                bytes, WebSocketMessageType.Text, true, sendTimeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            MarkSendFailed(member, "송신 제한 시간 초과");
         }
         catch (WebSocketException)
         {
-            // 보내는 순간 끊길 수 있음.
-            // 나가기 처리는 다른 곳에서 함.
-            Console.WriteLine("[Error] SocketException Snapshot Broadcast Dead");
+            MarkSendFailed(member, "소켓 송신 실패");
         }
         finally // 예외가 발생하든 안하든 꼭 처리되는 finally 구문(찾아 보십쇼) 
         {
-            member.SendLock.Release();
+            if (lockTaken) member.SendLock.Release();
         }
+    }
+
+    private void MarkSendFailed(Member member, string reason)
+    {
+        if (Interlocked.Exchange(ref member.SendFailed, 1) != 0) return;
+
+        Console.Error.WriteLine($"[{code}] {member.User.NickName}({member.User.Id}) {reason}");
+        member.Socket.Abort();
     }
 
     // 단순 호출용 유틸 함수
@@ -272,31 +332,6 @@ public class Room
         return SendRawAsync(member, JsonSerializer.Serialize(message, message.GetType()));
     }
 
-    // // 지금 이 방의 사람들 위치를 한번씩 뿌린다.
-    // // 언제 뿌릴지는 RoomHub에서 정한다.
-    // public async Task BroadcastStateAsync()
-    // {
-    //     // 방에 멤버가 없다면(방이 사라질때) 보내지 않는다.
-    //     if (members.IsEmpty) return;
-    //     
-    //     // 사람마다 위치 데이터 객체 하나씩 만든다.
-    //     List<PlayerState> players = new List<PlayerState>();
-    //
-    //     foreach (Member member in members.Values)
-    //     {
-    //         players.Add(new PlayerState()
-    //         {
-    //             Id = member.User.Id,
-    //             X = member.X,
-    //             Y = member.Y,
-    //         });
-    //     }
-    //
-    //     // states를 배열로 바꿔서 뿌린다(Broadcast)
-    //     await BroadcastAsync(new StateMessage() { Players = players.ToArray() });
-    //     LogStateBroadcast(players.Count);
-    // }
-    
     public async Task SendGuestInputsToHostAsync()
     {
         Member host = GetHost();
@@ -400,7 +435,7 @@ public class Room
 
             members[member.User.Id] = member;
             // join 메시지를 뿌린다. 접속자인 member 에게는 보내지 않는다
-            await BroadcastAsync(new JoinMessage { User = member.User }, member.User.Id);
+            EnqueueBroadcast(new JoinMessage { User = member.User }, member.User.Id);
         }
         finally
         {
@@ -438,11 +473,12 @@ public class Room
             {
                 Console.WriteLine($"[RoomExpired] [{code}] {member.User.NickName}({member.User.Id})({(member.User.IsHost ? "Host" : "Guest")}) 호스트가 나가서 방 폭파");
                 roomExpired = true;
+                roomExpiredCancellation.Cancel();
             }
 
             // 퇴장한것을 알려줍니다.
             Console.WriteLine($"[Leave] [{code}] {member.User.NickName}({member.User.Id})({(member.User.IsHost ? "Host" : "Guest")}) 나감");
-            await BroadcastAsync(new LeaveMessage { Id = member.User.Id }, member.User.Id);
+            EnqueueBroadcast(new LeaveMessage { Id = member.User.Id }, member.User.Id);
         }
         finally
         {
@@ -458,64 +494,42 @@ public class Room
     public async Task HandleAsync(WebSocket socket,
         string id, CancellationToken token)
     {
-        // Join처리를 실행하고 끝난뒤 멤버 객체를 저장해준다.
-        Member member = await JoinAsync(socket, id, token);
-        // hello 안보내고 딴소리 했다. 방에 못 들인다
-        if (member == null) return;
+        Member member = null;
+        using CancellationTokenSource linkedCancellation =
+            CancellationTokenSource.CreateLinkedTokenSource(
+                token, roomExpiredCancellation.Token);
 
         try
         {
-            // 접속완료 했으면 메시지를 계속 들을 수 있게
-            // 루프를 호출해준다.
-            await ReceiveLoopAsync(member, token);
+            // Join처리를 실행하고 끝난뒤 멤버 객체를 저장해준다.
+            member = await JoinAsync(socket, id, linkedCancellation.Token);
+            // hello 안보내고 딴소리 했다. 방에 못 들인다
+            if (member == null) return;
+
+            // 접속완료 했으면 메시지를 계속 들을 수 있게 루프를 호출해준다.
+            await ReceiveLoopAsync(member, linkedCancellation.Token);
         }
         catch (OperationCanceledException e)
         {
-            Console.Error.WriteLine($"[{code}] 접속 종료 ({e})");
+            Console.Error.WriteLine($"[{code}] OperationCanceled 처리 예외 ({id}): {e}");
         } // 서버 종료. 정상
         catch (WebSocketException e)
         {
-            Console.Error.WriteLine($"[{code}] 접속 종료 ({e})");
+            Console.Error.WriteLine($"[{code}] WebSocket 처리 예외 ({id}): {e}");
         }                  // 창 그냥 껐다. 흔한 일
-        catch (Exception e) { Console.Error.WriteLine($"[{code}] 처리 예외 ({id}): {e}"); } 
+        catch (Exception e)
+        {
+            Console.Error.WriteLine($"[{code}] 처리 예외 ({id}): {e}");
+        }
         finally
         {
-            // 루프가 종료되었으면 연결이 끊어진 것
-            // 퇴장 처리 해준다
-            await LeaveAsync(member);
+            // 입장이 완료된 연결만 퇴장 처리한다.
+            if (member != null) await LeaveAsync(member);
         }
     }
     
     #endregion
     
-    
-    // LogMove 함수는 수업에서 안한 부분
-    // 위치가 들어오고 있다는 것을 눈으로 보여 주는 함수. 
-    // 사실 없어도 그만.
-    
-    // 받을 때마다 찍지 않고 간격을 두는 이유?
-    // : 오는 것을 다 찍으면 콘솔이 위치로만 채워져 정작 중요한 들어옴,나감이 안 보인다.
-    //  대신 그동안 몇 번 받았는지 출력해줌.
-    // private void LogMove(Member member, MoveMessage move)
-    // {
-    //     if (logMovesPerSecond <= 0) return;
-    //
-    //     TimeSpan gap = DateTime.Now - member.LastLogAt;
-    //     if (gap.TotalSeconds < 1.0 / logMovesPerSecond) return;
-    //
-    //     // 보낸 쪽이 적은 번호가 서버가 아는 번호와 다르면 그대로 드러내 준다.
-    //     // 평소에는 같으므로 아무것도 붙지 않는다.
-    //     string claimed = move.Id == member.User.Id ? "" : $"  (보낸 쪽이 적은 번호 : {move.Id})";
-    //
-    //     Console.WriteLine(
-    //         $"{HandleLog}[{code}] 받음 {member.User.NickName}({member.User.Id}) " +
-    //         $"({member.X,7:F2}, {member.Y,7:F2})  " +
-    //         $"지난 {gap.TotalSeconds:F1}초에 {member.MovesSinceLog}번{claimed}");
-    //
-    //     member.MovesSinceLog = 0;
-    //     member.LastLogAt = DateTime.Now;
-    // }
-
     // Guest Input은 자주 들어오므로 사람마다 일정 간격으로 요약해서 출력한다.
     private void LogGuestInput(Member member, GuestInputMessage input)
     {

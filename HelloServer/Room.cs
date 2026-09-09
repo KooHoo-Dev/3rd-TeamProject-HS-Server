@@ -252,7 +252,7 @@ public class Room
             }
             catch (Exception e)
             {
-                Console.Error.WriteLine($"[Broadcast][{code}] 방송 처리 예외: {e}");
+                Console.Error.WriteLine($"[{code}] 방송 처리 예외: {e}");
             }
         }
     }

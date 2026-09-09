@@ -3,12 +3,19 @@ using System.Collections.Generic;
 
 namespace HelloServer
 {
+    public enum GameResultState
+    {
+        None,
+        GameOver,
+        GameWin
+    }
+
     public class User
     {
         public string Id { get; set; }
         public string NickName { get; set; }
         public bool IsHost { get; set; }
-        
+
         public float R { get; set; }
         public float G { get; set; }
         public float B { get; set; }
@@ -38,6 +45,15 @@ namespace HelloServer
         
         public bool IsLeftGrab { get; set; }
         public bool IsRightGrab { get; set; }
+        public int LeftGrabEventType { get; set; }
+        public int LeftGrabEventSequence { get; set; }
+        public int LeftGrabTargetType { get; set; }
+        public int LeftGrabTargetWorldItemId { get; set; }
+        public int RightGrabEventType { get; set; }
+        public int RightGrabEventSequence { get; set; }
+        public int RightGrabTargetType { get; set; }
+        public int RightGrabTargetWorldItemId { get; set; }
+        public bool IsFKeyPressed { get; set; }
     }
 
     public class PartState
@@ -46,6 +62,10 @@ namespace HelloServer
         public float Y { get; set; }
         
         public Rotation Rotation { get; set; }
+        
+        public int TutorialReadyCount { get; set; }
+        public int TutorialTotalCount { get; set; }
+        public bool IsStartButtonPressed { get; set; }
     }
 
     public class Rotation
@@ -136,6 +156,7 @@ namespace HelloServer
         public bool IsDay { get; set; }      // 흐른 시간 혹은 DayLoop 상태
         public int ActivePlayerCount { get; set; }
         public int ArrivedPlayerCount { get; set; }
+        public GameResultState GameResult { get; set; }
         public int TutorialReadyCount { get; set; }
         public int TutorialTotalCount { get; set; }
         public bool IsStartButtonPressed { get; set; }
@@ -179,4 +200,5 @@ namespace HelloServer
 
     #endregion
         
+    
 }

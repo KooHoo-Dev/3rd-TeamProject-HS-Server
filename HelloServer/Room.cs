@@ -30,19 +30,27 @@ public class Room
     {
         public User User;
         public WebSocket Socket;
+        private Channel<BroadcastWorkItem> BroadcastQueue =
+            Channel.CreateBounded<BroadcastWorkItem>(
+                new BoundedChannelOptions(1)
+                {
+                    SingleReader = true,
+                    FullMode = BoundedChannelFullMode.DropOldest
+                });
         
         // DateTime?
         // : 날짜랑 시간을 표현하고 조작할 때 사용하는 구조체 입니다.
         //  DateTime.Now : 현재 지역 시간을 나타낼 수 있ㅅ브니다
         //  DateTime.UtcNow : 협정 세계시(영국 본초 자오선(?))
         // 출력 서식을 따로 지정할 수 있습니다. 그거는 MS 홈페이지 가서 보세요
+        // 로그 전용
         public DateTime LastLogAt;
+        public DateTime LastInputLogAt;
+        public DateTime LastRejectedSnapshotLogAt;
+        public int RejectedSnapshotsSinceLog;
+        public int InputsSinceLog;
 
         public GuestInputMessage LastInput;
-        public int InputsSinceLog;
-        public DateTime LastInputLogAt;
-        public int RejectedSnapshotsSinceLog;
-        public DateTime LastRejectedSnapshotLogAt;
         public int SendFailed;
         
         // 보낼때 여러메시지를 동시에 보내지 않기 위에
@@ -62,9 +70,9 @@ public class Room
     // 여러 쓰레드에서 동시에 사용하더라도 딕셔너리의 한 상태를 유지 시킬 수 있는
     // 안정성이 보장된 딕셔너리 입니다.
     private readonly ConcurrentDictionary<string, Member> members = new();
-    private readonly Channel<BroadcastWorkItem> broadcastQueue =
-        Channel.CreateUnbounded<BroadcastWorkItem>(
-            new UnboundedChannelOptions { SingleReader = true });
+    // private readonly Channel<BroadcastWorkItem> broadcastQueue =
+    //     Channel.CreateUnbounded<BroadcastWorkItem>(
+    //         new UnboundedChannelOptions { SingleReader = true });
 
     // 들어오고 나가는 메시지 처리(일)을 한줄로 세우는 자물쇠 입니다.
     // lock블록이 await가 안먹어서 사용합니다.
@@ -388,6 +396,7 @@ public class Room
             Console.WriteLine($"{HandleLog}[{code}] hello가 null : {first}");
             return null;
         }
+        
         // 메시지와 매개변수를 조합해서 Member객체를 생성한다.
         Member member = new Member();
         member.Socket = socket;

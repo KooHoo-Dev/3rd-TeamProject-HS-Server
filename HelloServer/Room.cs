@@ -26,17 +26,10 @@ public class Room
     private const int SendTimeoutMilliseconds = 9000;
 
     // 접속자 한 명.
-    private class Member
+    public class Member
     {
         public User User;
         public WebSocket Socket;
-        private Channel<BroadcastWorkItem> BroadcastQueue =
-            Channel.CreateBounded<BroadcastWorkItem>(
-                new BoundedChannelOptions(1)
-                {
-                    SingleReader = true,
-                    FullMode = BoundedChannelFullMode.DropOldest
-                });
         
         // DateTime?
         // : 날짜랑 시간을 표현하고 조작할 때 사용하는 구조체 입니다.
@@ -60,9 +53,17 @@ public class Room
         // 하나의 쓰레드에서만 온전히 돌아갈 수 있도록 하게 해주는 클래스
         public readonly SemaphoreSlim SendLock 
             = new SemaphoreSlim(1, 1);
+        
+        public readonly Channel<BroadcastWorkItem> LatestSnapshotChannel =
+            Channel.CreateBounded<BroadcastWorkItem>(
+                new BoundedChannelOptions(1)
+                {
+                    SingleReader = true,
+                    FullMode = BoundedChannelFullMode.DropOldest
+                });
     }
 
-    private readonly record struct BroadcastWorkItem(object Message, string ExceptId);
+    public readonly record struct BroadcastWorkItem(object Message, string ExceptId);
     
     // race condition이 일어나도 여러 쓰레드에서 동시적으로
     // 참조 하여 읽을 수 있는 딕셔너리 입니다. 일반적인 Dictionary를 쓰면
@@ -70,16 +71,12 @@ public class Room
     // 여러 쓰레드에서 동시에 사용하더라도 딕셔너리의 한 상태를 유지 시킬 수 있는
     // 안정성이 보장된 딕셔너리 입니다.
     private readonly ConcurrentDictionary<string, Member> members = new();
-    // private readonly Channel<BroadcastWorkItem> broadcastQueue =
-    //     Channel.CreateUnbounded<BroadcastWorkItem>(
-    //         new UnboundedChannelOptions { SingleReader = true });
 
     // 들어오고 나가는 메시지 처리(일)을 한줄로 세우는 자물쇠 입니다.
     // lock블록이 await가 안먹어서 사용합니다.
     private readonly SemaphoreSlim gate = new SemaphoreSlim(1, 1);
     // 호스트가 나가 방이 만료됐을 때, 대기 중인 모든 수신을 깨운다.
     private readonly CancellationTokenSource roomExpiredCancellation = new();
-    private readonly Task broadcastLoop;
     private readonly string code; // 방번호
     private readonly int logMovesPerSecond; // 룸허브를 통해서 전달 받습니다. 
 
@@ -98,12 +95,16 @@ public class Room
     {
         this.code = code;
         this.logMovesPerSecond = logMovesPerSecond;
-        broadcastLoop = BroadcastQueueLoopAsync();
+        // room 단위 broadcastLoop를 member 단위로 쪼개는 거임
+        // broadcastLoop = BroadcastQueueLoopAsync();
     }
 
-    public void Stop()
+    public void StopWriteToAllChannel()
     {
-        broadcastQueue.Writer.TryComplete();
+        foreach (Member member in members.Values)
+        {
+            member.LatestSnapshotChannel.Writer.TryComplete();
+        }
     }
 
     // 현재 방의 Host를 찾는다.
@@ -245,18 +246,27 @@ public class Room
     // 메시지를 방송 큐에 넣는다. 호출자는 네트워크 전송을 기다리지 않는다.
     private void EnqueueBroadcast(object message, string exceptId = null)
     {
-        if (broadcastQueue.Writer.TryWrite(new BroadcastWorkItem(message, exceptId)) == false)
-            Console.Error.WriteLine($"[{code}] 종료된 방송 큐에 메시지를 넣으려 했습니다.");
+        foreach (Member member in members.Values)
+        {
+            if (member.User.Id == exceptId)
+            {
+                continue;
+            }
+            if (member.LatestSnapshotChannel.Writer.TryWrite(new BroadcastWorkItem(message, exceptId)) == false)
+                Console.Error.WriteLine($"[{code}] 종료된 방송 큐에 메시지를 넣으려 했습니다.");
+        }
     }
 
     // 방송 큐를 하나씩 읽어 실제 네트워크 전송을 전담한다.
-    private async Task BroadcastQueueLoopAsync()
+    private async Task SendMemberChannelLoopAsync(Member member)
     {
-        await foreach (BroadcastWorkItem work in broadcastQueue.Reader.ReadAllAsync())
+        // 여기도 channel 하나 짜리라서 수정해야될듯
+        // 큐전체가 하나라서 foreach가 필요가 없음
+        await foreach (BroadcastWorkItem work in member.LatestSnapshotChannel.Reader.ReadAllAsync())
         {
             try
             {
-                await BroadcastNowAsync(work.Message, work.ExceptId);
+                await SendAsync(member, work.Message);
             }
             catch (Exception e)
             {
@@ -309,6 +319,7 @@ public class Room
 
             // 보낼때는 string이 아니라 byte배열로 바꿔준다
             byte[] bytes = Encoding.UTF8.GetBytes(json);
+            
             await member.Socket.SendAsync(
                 bytes, WebSocketMessageType.Text, true, sendTimeout.Token);
         }
@@ -403,6 +414,9 @@ public class Room
         member.LastLogAt = DateTime.Now; // 들어온 시각으로 맞춰 둔다.
         member.User = new User();
         member.User.Id = id;
+        
+        // broadcast 될때 방 전체 생애주기네 이거...
+        // 방에 members 변수 이용하면 될듯
         if (hello.NickName == null)
         {
             member.User.NickName = "꼬마돌";
@@ -415,6 +429,9 @@ public class Room
         member.User.R = hello.R;
         member.User.G = hello.G;
         member.User.B = hello.B;
+
+        // BroadcastMemberQueueLoopAsync가 메인 Handle과 독립적으로 실행되게 유도
+        _ = SendMemberChannelLoopAsync(member);
         
         // 들어오고 나가는 일은 한사람에 한명씩 해야합니다.
         // 사람이 들어오면 현재 방에 있는 멤버들에게도 메시지를 보내줘야겠죠?
@@ -454,6 +471,14 @@ public class Room
         Console.WriteLine($"{HandleLog}[{code}] {member.User.NickName}({member.User.Id})({(member.User.IsHost ? "Host" : "Guest")}) 들어옴");
         return member;
     }
+
+    // private void EnqueueDataToChannel(Member member, object message)
+    // {
+    //     if (member.SendChannel.Writer.TryWrite(new BroadcastWorkItem(message, null)) == false)
+    //     {
+    //         Console.Error.WriteLine($"[{code}] 종료된 방송 채널에 메시지를 넣으려 했습니다.");
+    //     }
+    // }
 
     private async Task LeaveAsync(Member member)
     {

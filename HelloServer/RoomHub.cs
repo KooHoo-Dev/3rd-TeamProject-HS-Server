@@ -91,13 +91,13 @@ public class RoomHub
             // 호스트 나가면 방 폭파여서 일단 없어도 될거 같은데 남기기
             if (entry.Users > 0) return;
             
-            entries.Remove(code);
             roomToStop = entry.Room;
+            roomToStop.StopWriteToAllChannel();
+            entries.Remove(code);
             Console.WriteLine($"{HandleLog}[{code}] 아무도 없어서 방을 지움. 총 방의 개수 {entries.Count}");
         }
 
         // room에 있는 모든 channel의 쓰기를 멈추게 해야
-        roomToStop.StopWriteToAllChannel();
     }
 
     #endregion

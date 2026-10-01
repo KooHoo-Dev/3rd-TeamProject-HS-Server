@@ -235,7 +235,7 @@ public class Room
         lastSnapshot = snapshot;
         // 송신 Host를 제외한 나머지 Member에게만 전달한다.
         LogSnapshot(member, snapshot);
-        EnqueueBroadcast(snapshot, member.User.Id);
+        EnqueueSnapshot(snapshot, member.User.Id);
         return Task.CompletedTask;
     }
 
@@ -244,14 +244,13 @@ public class Room
     #region 뿌리기
 
     // 메시지를 방송 큐에 넣는다. 호출자는 네트워크 전송을 기다리지 않는다.
-    private void EnqueueBroadcast(object message, string exceptId = null)
+    private void EnqueueSnapshot(object message, string exceptId = null)
     {
         foreach (Member member in members.Values)
         {
             if (member.User.Id == exceptId)
-            {
                 continue;
-            }
+            
             if (member.LatestSnapshotChannel.Writer.TryWrite(new BroadcastWorkItem(message, exceptId)) == false)
                 Console.Error.WriteLine($"[{code}] 종료된 방송 큐에 메시지를 넣으려 했습니다.");
         }
@@ -276,25 +275,25 @@ public class Room
     }
 
     // 메시지를 여러명에게 실제로 뿌리는 함수. 방송 워커만 호출한다.
-    private async Task BroadcastNowAsync(object message, string exceptId = null)
-    {
-        string json = JsonSerializer.Serialize(message, message.GetType());
-        
-        // 보낼 json객체를 미리 생성하고,
-        // 유저수에 맞게 보내는 작업을 처리한다.
-        List<Task> sending = new List<Task>();
-
-        // 딕셔너리에 있는 모든 멤버를 순회한다
-        foreach (Member member in members.Values)
-        {
-            // 제외 대상이라면 건너 뛴다
-            if(member.User.Id == exceptId) continue;
-            // 한명단위 메시지 Task를 만들어서 List에 넣어준다
-            sending.Add(SendRawAsync(member, json));
-        }
-        
-        await Task.WhenAll(sending);
-    }
+    // private async Task BroadcastNowAsync(object message, string exceptId = null)
+    // {
+    //     string json = JsonSerializer.Serialize(message, message.GetType());
+    //     
+    //     // 보낼 json객체를 미리 생성하고,
+    //     // 유저수에 맞게 보내는 작업을 처리한다.
+    //     List<Task> sending = new List<Task>();
+    //
+    //     // 딕셔너리에 있는 모든 멤버를 순회한다
+    //     foreach (Member member in members.Values)
+    //     {
+    //         // 제외 대상이라면 건너 뛴다
+    //         if(member.User.Id == exceptId) continue;
+    //         // 한명단위 메시지 Task를 만들어서 List에 넣어준다
+    //         sending.Add(SendRawAsync(member, json));
+    //     }
+    //     
+    //     await Task.WhenAll(sending);
+    // }
 
     // 한명의 User에게 메시지를 보내는 함수
     private async Task SendRawAsync(Member member, string json)
@@ -461,7 +460,9 @@ public class Room
 
             members[member.User.Id] = member;
             // join 메시지를 뿌린다. 접속자인 member 에게는 보내지 않는다
-            EnqueueBroadcast(new JoinMessage { User = member.User }, member.User.Id);
+            // 
+            await BroadcastNowAsync(welcome, member.User.Id);
+            // EnqueueSnapshot(new JoinMessage { User = member.User }, member.User.Id);
         }
         finally
         {
@@ -470,6 +471,21 @@ public class Room
         
         Console.WriteLine($"{HandleLog}[{code}] {member.User.NickName}({member.User.Id})({(member.User.IsHost ? "Host" : "Guest")}) 들어옴");
         return member;
+    }
+
+    private async Task BroadcastNowAsync(object message, string exceptId)
+    {
+        List<Task> tasks = new List<Task>();
+
+        foreach (Member member in members.Values)
+        {
+            if (member.User.Id == exceptId)
+                continue;
+            
+            tasks.Add(SendAsync(member, message));
+        }
+
+        await Task.WhenAll(tasks);
     }
 
     // private void EnqueueDataToChannel(Member member, object message)
@@ -512,7 +528,8 @@ public class Room
 
             // 퇴장한것을 알려줍니다.
             Console.WriteLine($"[Leave] [{code}] {member.User.NickName}({member.User.Id})({(member.User.IsHost ? "Host" : "Guest")}) 나감");
-            EnqueueBroadcast(new LeaveMessage { Id = member.User.Id }, member.User.Id);
+            await BroadcastNowAsync(new LeaveMessage { Id = member.User.Id }, member.User.Id);
+            // EnqueueSnapshot(new LeaveMessage { Id = member.User.Id }, member.User.Id);
         }
         finally
         {
